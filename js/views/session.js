@@ -58,10 +58,15 @@ export async function session(ctx) {
     node.appendChild(renderExercise(s, ex, exIdx));
   });
 
-  // Añadir más grupos a la sesión en curso.
-  const addBtn = el(`<button class="btn ghost block mt" id="add-group">+ Añadir grupo</button>`);
-  addBtn.onclick = () => openAddGroups(s);
-  node.appendChild(addBtn);
+  // Añadir más ejercicios a la sesión en curso (por grupo o sueltos).
+  const addRow = el(`
+    <div class="btn-row mt">
+      <button class="btn ghost" id="add-group">+ Grupo</button>
+      <button class="btn ghost" id="add-ex">+ Ejercicio</button>
+    </div>`);
+  addRow.querySelector('#add-group').onclick = () => openAddGroups(s);
+  addRow.querySelector('#add-ex').onclick = () => openAddExercises(s);
+  node.appendChild(addRow);
 
   // Acciones finales
   const actions = el(`
@@ -136,13 +141,94 @@ async function openAddGroups(s) {
   };
 }
 
+/** Modal para añadir ejercicios sueltos a la sesión en curso (con filtro por etiqueta). */
+async function openAddExercises(s) {
+  const all = await store.listExercises();
+  const inSession = new Set(s.exercises.map((e) => e.exerciseId));
+  const available = all.filter((e) => !inSession.has(e.id));
+  if (!available.length) { toast('Todos los ejercicios ya están en la sesión'); return; }
+
+  const tags = [...new Set(available.flatMap((e) => store.exerciseTags(e)))].sort((a, b) => a.localeCompare(b, 'es'));
+  const filter = new Set();
+  const selected = new Set();
+
+  const content = el(`
+    <div>
+      <div class="field" id="filter-field" style="margin-bottom:10px">
+        <label>Filtrar por etiqueta</label>
+        <div class="chip-grid" id="f-tags"></div>
+      </div>
+      <div class="field">
+        <label>Ejercicios a añadir (puedes elegir varios)</label>
+        <div class="chip-grid" id="ex-chips"></div>
+      </div>
+      <button class="btn primary block mt" id="add" disabled>Añadir a la sesión</button>
+    </div>`);
+  const fTags = content.querySelector('#f-tags');
+  const exChips = content.querySelector('#ex-chips');
+  const addBtn = content.querySelector('#add');
+  if (!tags.length) content.querySelector('#filter-field').hidden = true;
+
+  function renderChips() {
+    fTags.innerHTML = '';
+    if (tags.length) {
+      const allc = el(`<button class="chip ${filter.size === 0 ? 'selected' : ''}" type="button">Todas</button>`);
+      allc.onclick = () => { filter.clear(); renderChips(); };
+      fTags.appendChild(allc);
+      for (const t of tags) {
+        const c = el(`<button class="chip ${filter.has(t) ? 'selected' : ''}" type="button">${esc(t)}</button>`);
+        c.onclick = () => { if (filter.has(t)) filter.delete(t); else filter.add(t); renderChips(); };
+        fTags.appendChild(c);
+      }
+    }
+    exChips.innerHTML = '';
+    const list = filter.size ? available.filter((e) => store.exerciseTags(e).some((t) => filter.has(t))) : available;
+    if (!list.length) exChips.appendChild(el('<span class="faint">Ningún ejercicio con ese filtro.</span>'));
+    for (const e of list) {
+      const c = el(`<button class="chip ${selected.has(e.id) ? 'selected' : ''}" type="button">${esc(e.name)}</button>`);
+      c.onclick = () => { if (selected.has(e.id)) selected.delete(e.id); else selected.add(e.id); renderChips(); };
+      exChips.appendChild(c);
+    }
+    addBtn.disabled = selected.size === 0;
+  }
+  renderChips();
+
+  const { close } = showModal('Añadir ejercicio', content);
+  addBtn.onclick = async () => {
+    if (!selected.size) return;
+    const added = await store.addExercisesToSession(s, [...selected]);
+    close();
+    toast(`${added} ejercicio${added === 1 ? '' : 's'} añadido${added === 1 ? '' : 's'}`, 'success');
+    navigate(`#/session/${s.id}`);
+  };
+}
+
 function renderExercise(s, ex, exIdx) {
   const card = el(`<div class="card"></div>`);
-  card.appendChild(el(`
-    <div class="row" style="gap:8px;margin-bottom:4px">
-      <div style="font-weight:800;font-size:16px">${esc(ex.name)}</div>
-      ${ex.unilateral ? '<span class="badge">Unilateral ×2</span>' : ''}
-    </div>`));
+  const head = el(`
+    <div class="row between" style="gap:8px;margin-bottom:4px;align-items:flex-start">
+      <div class="grow" style="min-width:0">
+        <div style="font-weight:800;font-size:16px;line-height:1.25">${esc(ex.name)}</div>
+        ${ex.unilateral ? '<div style="margin-top:6px"><span class="badge" style="white-space:nowrap">Unilateral ×2</span></div>' : ''}
+      </div>
+      <button class="icon-btn" data-act="rm-ex" aria-label="Quitar ejercicio de la sesión" style="width:34px;height:34px;flex-shrink:0">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+      </button>
+    </div>`);
+  head.querySelector('[data-act="rm-ex"]').onclick = async () => {
+    const logged = (ex.sets || []).some((st) => num(st.reps) > 0 || num(st.weight) > 0);
+    const msg = logged
+      ? `¿Quitar "${ex.name}" de la sesión? Tiene series registradas que se perderán.`
+      : `¿Quitar "${ex.name}" de la sesión?`;
+    if (await confirmDialog(msg, { okText: 'Quitar' })) {
+      const idx = s.exercises.indexOf(ex);
+      if (idx >= 0) s.exercises.splice(idx, 1);
+      await store.saveSession(s);
+      toast('Ejercicio quitado');
+      navigate(`#/session/${s.id}`);
+    }
+  };
+  card.appendChild(head);
 
   if (ex.previous) {
     card.appendChild(el(`<div class="sub faint" style="margin-bottom:10px">Última vez · ${fmtDate(ex.previous.date)}</div>`));

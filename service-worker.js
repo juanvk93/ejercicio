@@ -6,7 +6,7 @@
    funcionar bajo subdirectorios (GitHub Pages).
    ============================================================ */
 
-const CACHE = 'gym-tracker-v11';
+const CACHE = 'gym-tracker-v20';
 
 // Base = directorio donde vive el service worker.
 const BASE = self.location.pathname.replace(/service-worker\.js$/, '');
@@ -28,6 +28,7 @@ const ASSETS = [
   'js/views/exercises.js',
   'js/views/groups.js',
   'js/views/reports.js',
+  'js/views/calendar.js',
   'js/views/weight.js',
   'js/views/calculator.js',
   'js/views/settings.js',

@@ -2,7 +2,7 @@
    weight.js — Registrar peso corporal y ver su evolución.
    ============================================================ */
 
-import { el, esc, num, todayISO, fmtDate, fmtDateShort, fmtNum, toast, confirmDialog, lineChart } from '../utils.js';
+import { el, esc, num, round, todayISO, fmtDate, fmtDateShort, fmtNum, toast, confirmDialog, lineChart } from '../utils.js';
 import { navigate } from '../router.js';
 import { unitLabel } from '../prefs.js';
 import * as store from '../store.js';
@@ -37,10 +37,30 @@ export async function weight() {
   };
   node.appendChild(form);
 
-  if (records.length >= 2) {
+  // Evolución del peso
+  if (records.length) {
     node.appendChild(el('<div class="section-title">Evolución</div>'));
-    const points = records.map((r) => ({ x: fmtDateShort(r.date), y: r.weight }));
-    node.appendChild(el(`<div class="card">${lineChart(points, { unit: 'kg' })}</div>`));
+    const first = records[0].weight;
+    const last = records[records.length - 1].weight;
+    const min = Math.min(...records.map((r) => r.weight));
+    const max = Math.max(...records.map((r) => r.weight));
+    const diff = round(last - first, 2);
+    const sign = diff > 0 ? '+' : '';
+    const diffColor = diff > 0 ? 'var(--warning)' : (diff < 0 ? 'var(--success)' : 'var(--text-faint)');
+
+    node.appendChild(el(`
+      <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat"><div class="val">${fmtNum(last)}<span class="unit"> ${esc(u)}</span></div><div class="lbl">Actual</div></div>
+        <div class="stat"><div class="val" style="color:${diffColor}">${sign}${fmtNum(diff)}<span class="unit"> ${esc(u)}</span></div><div class="lbl">Variación</div></div>
+        <div class="stat"><div class="val">${fmtNum(min)}–${fmtNum(max)}</div><div class="lbl">Rango</div></div>
+      </div>`));
+
+    if (records.length >= 2) {
+      const points = records.map((r) => ({ x: fmtDateShort(r.date), y: r.weight }));
+      node.appendChild(el(`<div class="card mt">${lineChart(points, { unit: u })}<div class="faint center" style="font-size:12px;margin-top:6px">Peso (${esc(u)}) por fecha</div></div>`));
+    } else {
+      node.appendChild(el('<div class="card"><div class="empty"><p>Registra al menos 2 pesos para ver la gráfica.</p></div></div>'));
+    }
   }
 
   node.appendChild(el('<div class="section-title">Historial</div>'));

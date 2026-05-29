@@ -6,7 +6,7 @@
 
 import { route, setNotFound, startRouter, navigate, getCurrentRoute } from './router.js';
 import { qs, qsa, el } from './utils.js';
-import { setTheme, getTheme, toggleTheme, updateThemeIcon } from './theme.js';
+import { setTheme, getTheme } from './theme.js';
 import * as store from './store.js';
 
 // Vistas
@@ -15,6 +15,7 @@ import { session, sessionSummary } from './views/session.js';
 import { exercises } from './views/exercises.js';
 import { groups } from './views/groups.js';
 import { reports } from './views/reports.js';
+import { calendar } from './views/calendar.js';
 import { weight } from './views/weight.js';
 import { calculator } from './views/calculator.js';
 import { settings } from './views/settings.js';
@@ -22,7 +23,6 @@ import { settings } from './views/settings.js';
 const viewHost = qs('#view');
 const titleEl = qs('#app-title');
 const backBtn = qs('#back-btn');
-const themeBtn = qs('#theme-btn');
 
 let backTarget = false; // ruta de retroceso o false
 
@@ -63,6 +63,7 @@ route('/session/:id/summary', (ctx) => renderView(sessionSummary, ctx));
 route('/exercises', (ctx) => renderView(exercises, ctx));
 route('/groups', (ctx) => renderView(groups, ctx));
 route('/reports', (ctx) => renderView(reports, ctx));
+route('/calendar', (ctx) => renderView(calendar, ctx));
 route('/weight', (ctx) => renderView(weight, ctx));
 route('/calculator', (ctx) => renderView(calculator, ctx));
 route('/settings', (ctx) => renderView(settings, ctx));
@@ -78,7 +79,6 @@ backBtn.onclick = () => {
   if (typeof backTarget === 'string') navigate(backTarget);
   else history.back();
 };
-themeBtn.onclick = () => toggleTheme();
 
 /* ---------------- Service Worker ---------------- */
 function registerSW() {
@@ -91,7 +91,6 @@ function registerSW() {
 /* ---------------- Arranque ---------------- */
 async function init() {
   setTheme(getTheme());
-  updateThemeIcon();
   await store.seedIfEmpty();
   await store.migrate();
   startRouter();

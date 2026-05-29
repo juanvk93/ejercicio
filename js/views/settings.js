@@ -8,6 +8,7 @@ import { navigate } from '../router.js';
 import { getTheme, setTheme } from '../theme.js';
 import { getUnit, setUnit } from '../prefs.js';
 import * as db from '../db.js';
+import * as store from '../store.js';
 
 function navItem(label, sub, route, iconPath) {
   const item = el(`
@@ -106,6 +107,8 @@ export async function settings() {
 
   dataCard.querySelector('#export').onclick = async () => {
     const data = await db.exportAll();
+    // Incluye también la configuración (tema + unidad).
+    data.config = { theme: getTheme(), unit: getUnit() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -123,14 +126,32 @@ export async function settings() {
     input.onchange = async () => {
       const file = input.files[0];
       if (!file) return;
+      let data;
       try {
-        const data = JSON.parse(await file.text());
-        if (!await confirmDialog('Importar reemplazará TODOS los datos actuales. ¿Continuar?', { okText: 'Importar', danger: true })) return;
+        data = JSON.parse(await file.text());
+      } catch (e) {
+        toast('Archivo no válido (JSON)', 'error');
+        return;
+      }
+      // Validación: debe parecer un backup de la app (evita borrar datos con un archivo cualquiera).
+      const looksValid = data && typeof data === 'object' &&
+        (Array.isArray(data.exercises) || Array.isArray(data.groups) ||
+         Array.isArray(data.sessions) || Array.isArray(data.bodyweight));
+      if (!looksValid) { toast('No parece una copia de Gym Tracker', 'error'); return; }
+
+      if (!await confirmDialog('Importar reemplazará TODOS los datos y la configuración actuales. ¿Continuar?', { okText: 'Importar', danger: true })) return;
+      try {
         await db.importAll(data);
+        await store.migrate(); // normaliza datos antiguos importados
+        // Restaura la configuración si viene en el backup.
+        if (data.config) {
+          if (data.config.theme) setTheme(data.config.theme);
+          if (data.config.unit) setUnit(data.config.unit);
+        }
         toast('Datos importados', 'success');
         navigate('#/');
       } catch (e) {
-        toast('Archivo no válido', 'error');
+        toast('Error al importar', 'error');
       }
     };
     input.click();

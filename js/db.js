@@ -111,11 +111,12 @@ export async function importAll(data) {
     const t = db.transaction(names, 'readwrite');
     t.oncomplete = () => resolve(true);
     t.onerror = () => reject(t.error);
+    const arr = (v) => (Array.isArray(v) ? v : []);
     const map = {
-      [STORES.EXERCISES]: data.exercises || [],
-      [STORES.GROUPS]: data.groups || [],
-      [STORES.SESSIONS]: data.sessions || [],
-      [STORES.BODYWEIGHT]: data.bodyweight || [],
+      [STORES.EXERCISES]: arr(data.exercises),
+      [STORES.GROUPS]: arr(data.groups),
+      [STORES.SESSIONS]: arr(data.sessions),
+      [STORES.BODYWEIGHT]: arr(data.bodyweight),
     };
     names.forEach((name) => {
       const store = t.objectStore(name);

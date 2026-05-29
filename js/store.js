@@ -184,6 +184,18 @@ export async function addGroupsToSession(session, groups) {
   return added.length;
 }
 
+/**
+ * Añade ejercicios sueltos (por id) a una sesión en curso, sin duplicar.
+ * No modifica los grupos de la sesión. Guarda y devuelve cuántos se añadieron.
+ */
+export async function addExercisesToSession(session, exerciseIds) {
+  const existing = new Set((session.exercises || []).map((e) => e.exerciseId));
+  const added = await buildSessionExercises(exerciseIds, existing);
+  session.exercises = [...(session.exercises || []), ...added];
+  await saveSession(session);
+  return added.length;
+}
+
 /* ---------------- Peso corporal ---------------- */
 export async function listBodyweight() {
   const all = await db.getAll(STORES.BODYWEIGHT);
@@ -265,6 +277,57 @@ export async function globalStats() {
     totalSets, totalReps,
     volumeByDate,
   };
+}
+
+/** Resumen de los últimos 7 días (sesiones finalizadas). */
+export async function weekStats() {
+  const since = Date.now() - 7 * 24 * 3600 * 1000;
+  const sessions = (await listSessions()).filter((s) => s.status === 'finished' && s.startedAt >= since);
+  let volume = 0, sets = 0, durationMs = 0;
+  for (const s of sessions) {
+    const st = sessionStats(s);
+    volume += st.totalVolume; sets += st.totalSets; durationMs += st.duration;
+  }
+  return { count: sessions.length, volume: round(volume, 1), sets, durationMs };
+}
+
+/** Volumen y series acumulados por etiqueta (grupo muscular) en sesiones finalizadas. */
+export async function volumeByTag() {
+  const exs = await db.getAll(STORES.EXERCISES);
+  const tagMap = new Map(exs.map((e) => [e.id, exerciseTags(e)]));
+  const sessions = (await listSessions()).filter((s) => s.status === 'finished');
+  const agg = new Map(); // tag -> { volume, sets, reps }
+
+  for (const s of sessions) {
+    for (const ex of s.exercises || []) {
+      const factor = ex.unilateral ? 2 : 1;
+      const counted = (ex.sets || []).filter((st) => num(st.reps) > 0 || num(st.weight) > 0);
+      if (!counted.length) continue;
+      let vol = 0, reps = 0;
+      for (const st of counted) { vol += num(st.reps) * num(st.weight) * factor; reps += num(st.reps); }
+      const tags = tagMap.get(ex.exerciseId) || [];
+      const keys = tags.length ? tags : ['Sin etiqueta'];
+      for (const t of keys) {
+        const a = agg.get(t) || { volume: 0, sets: 0, reps: 0 };
+        a.volume += vol; a.sets += counted.length; a.reps += reps;
+        agg.set(t, a);
+      }
+    }
+  }
+  return [...agg.entries()]
+    .map(([tag, v]) => ({ tag, volume: round(v.volume, 1), sets: v.sets, reps: v.reps }))
+    .sort((a, b) => b.volume - a.volume);
+}
+
+/** Estadísticas de duración de las sesiones finalizadas. */
+export async function durationStats() {
+  const sessions = (await listSessions()).filter(
+    (s) => s.status === 'finished' && s.startedAt && s.finishedAt && s.finishedAt > s.startedAt);
+  const series = sessions.slice().reverse().map((s) => ({ date: s.startedAt, ms: s.finishedAt - s.startedAt }));
+  const totalMs = series.reduce((a, d) => a + d.ms, 0);
+  const avgMs = series.length ? totalMs / series.length : 0;
+  const longestMs = series.reduce((m, d) => (d.ms > m ? d.ms : m), 0);
+  return { count: series.length, totalMs, avgMs, longestMs, series };
 }
 
 /* ---------------- Datos de ejemplo (semilla) ---------------- */

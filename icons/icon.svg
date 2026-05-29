@@ -1,13 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="112" fill="#0f1115"/>
-  <g fill="none" stroke="#4f8cff" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
-    <!-- barra central -->
-    <line x1="168" y1="256" x2="344" y2="256"/>
-    <!-- discos izquierda -->
-    <rect x="120" y="196" width="34" height="120" rx="14" fill="#4f8cff" stroke="none"/>
-    <rect x="84"  y="216" width="30" height="80"  rx="12" fill="#7aa9ff" stroke="none"/>
-    <!-- discos derecha -->
-    <rect x="358" y="196" width="34" height="120" rx="14" fill="#4f8cff" stroke="none"/>
-    <rect x="398" y="216" width="30" height="80"  rx="12" fill="#7aa9ff" stroke="none"/>
+  <rect width="512" height="512" rx="112" fill="#15171e"/>
+  <rect x="3" y="3" width="506" height="506" rx="109" fill="none" stroke="#262b36" stroke-width="6"/>
+  <g fill="#4f8cff">
+    <rect x="190" y="244" width="132" height="24" rx="12"/>
+    <rect x="156" y="190" width="32" height="132" rx="14"/>
+    <rect x="324" y="190" width="32" height="132" rx="14"/>
+    <rect x="130" y="218" width="20" height="76" rx="10"/>
+    <rect x="362" y="218" width="20" height="76" rx="10"/>
   </g>
 </svg>

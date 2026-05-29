@@ -3,7 +3,7 @@
    Resumen global, volumen por sesión y progreso por ejercicio.
    ============================================================ */
 
-import { el, esc, fmtNum, fmtDateShort, lineChart } from '../utils.js';
+import { el, esc, fmtNum, fmtDateShort, fmtDuration, lineChart } from '../utils.js';
 import { unitLabel } from '../prefs.js';
 import * as store from '../store.js';
 
@@ -34,6 +34,45 @@ export async function reports() {
   node.appendChild(el('<div class="section-title">Volumen por sesión</div>'));
   const volPoints = g.volumeByDate.map((d) => ({ x: fmtDateShort(d.date), y: d.volume }));
   node.appendChild(el(`<div class="card">${lineChart(volPoints, { unit: 'kg' })}</div>`));
+
+  // Duración de los entrenamientos
+  const dur = await store.durationStats();
+  node.appendChild(el('<div class="section-title">Duración de los entrenamientos</div>'));
+  if (!dur.count) {
+    node.appendChild(el('<div class="card"><div class="empty"><p>Sin sesiones con hora de inicio y fin.</p></div></div>'));
+  } else {
+    node.appendChild(el(`
+      <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat"><div class="val">${fmtDuration(dur.avgMs)}</div><div class="lbl">Media</div></div>
+        <div class="stat"><div class="val">${fmtDuration(dur.longestMs)}</div><div class="lbl">Más largo</div></div>
+        <div class="stat"><div class="val">${fmtDuration(dur.totalMs)}</div><div class="lbl">Tiempo total</div></div>
+      </div>`));
+    const durPoints = dur.series.map((d) => ({ x: fmtDateShort(d.date), y: Math.round(d.ms / 60000) }));
+    node.appendChild(el(`<div class="card mt">${lineChart(durPoints, { unit: 'min' })}<div class="faint center" style="font-size:12px;margin-top:6px">Minutos por sesión</div></div>`));
+  }
+
+  // Volumen por grupo muscular (etiqueta)
+  const byTag = await store.volumeByTag();
+  node.appendChild(el('<div class="section-title">Volumen por grupo muscular</div>'));
+  if (!byTag.length) {
+    node.appendChild(el('<div class="card"><div class="empty"><p>Aún no hay volumen por etiqueta.</p></div></div>'));
+  } else {
+    const u = unitLabel();
+    const max = Math.max(...byTag.map((t) => t.volume)) || 1;
+    const card = el('<div class="card"></div>');
+    for (const t of byTag) {
+      const pct = Math.max(2, Math.round((t.volume / max) * 100));
+      card.appendChild(el(`
+        <div style="margin-bottom:12px">
+          <div class="row between" style="font-size:13px;margin-bottom:5px">
+            <span style="font-weight:700">${esc(t.tag)}</span>
+            <span class="muted">${fmtNum(t.volume)} ${esc(u)} · ${t.sets} series</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        </div>`));
+    }
+    node.appendChild(card);
+  }
 
   // Progreso por ejercicio (selector)
   node.appendChild(el('<div class="section-title">Progreso por ejercicio</div>'));
