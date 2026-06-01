@@ -75,6 +75,7 @@ export async function session(ctx) {
       <button class="btn primary" id="finish-session">Finalizar sesión</button>
     </div>`);
   actions.querySelector('#finish-session').onclick = async () => {
+    cancelAutosave(); // descarta un guardado pendiente: persistimos el estado final aquí.
     s.status = 'finished';
     s.finishedAt = Date.now();
     await store.saveSession(s);
@@ -83,6 +84,7 @@ export async function session(ctx) {
   };
   actions.querySelector('#cancel-session').onclick = async () => {
     if (await confirmDialog('¿Descartar esta sesión? Se perderán los datos registrados.', { okText: 'Descartar' })) {
+      cancelAutosave(); // evita que un autosave pendiente recree la sesión tras borrarla.
       await store.deleteSession(s.id);
       toast('Sesión descartada');
       navigate('#/');
@@ -99,6 +101,8 @@ function autosave(s) {
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => store.saveSession(s), 350);
 }
+/** Cancela un autosave pendiente (evita re-escribir una sesión ya borrada/finalizada). */
+function cancelAutosave() { clearTimeout(_saveTimer); }
 
 /** Modal para añadir uno o varios grupos a la sesión en curso. */
 async function openAddGroups(s) {
@@ -356,7 +360,12 @@ export async function sessionSummary(ctx) {
     const startT = sched.querySelector('#h-start').value;
     const endT = sched.querySelector('#h-end').value;
     s.startedAt = tsFromDateTime(date, startT);
-    s.finishedAt = endT ? tsFromDateTime(date, endT) : s.finishedAt;
+    if (endT) {
+      let finished = tsFromDateTime(date, endT);
+      // Si la hora de fin es anterior a la de inicio, la sesión cruzó la medianoche.
+      if (finished < s.startedAt) finished += 24 * 3600 * 1000;
+      s.finishedAt = finished;
+    }
     store.saveSession(s);
     const dur = s.finishedAt ? s.finishedAt - s.startedAt : 0;
     statGrid.querySelector('#dur-val').textContent = fmtDuration(dur);

@@ -12,14 +12,25 @@ export function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Convierte un valor a Date interpretando las cadenas 'YYYY-MM-DD' como
+ * fecha LOCAL (no UTC). Sin esto, `new Date('2026-06-01')` se interpreta como
+ * medianoche UTC y en zonas horarias detrás de UTC muestra el día anterior.
+ */
+function toLocalDate(value) {
+  if (typeof value === 'string') {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  return new Date(value);
+}
+
 export function fmtDate(value) {
-  const d = typeof value === 'number' ? new Date(value) : new Date(value);
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+  return toLocalDate(value).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 export function fmtDateShort(value) {
-  const d = typeof value === 'number' ? new Date(value) : new Date(value);
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+  return toLocalDate(value).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
 }
 
 export function fmtTime(value) {

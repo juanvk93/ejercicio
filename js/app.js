@@ -5,7 +5,7 @@
    ============================================================ */
 
 import { route, setNotFound, startRouter, navigate, getCurrentRoute } from './router.js';
-import { qs, qsa, el } from './utils.js';
+import { qs, qsa, el, esc } from './utils.js';
 import { setTheme, getTheme } from './theme.js';
 import * as store from './store.js';
 
@@ -39,7 +39,7 @@ async function renderView(producer, ctx) {
   } catch (err) {
     console.error(err);
     viewHost.innerHTML = '';
-    viewHost.appendChild(el('<div class="empty"><p>Algo salió mal.</p><p class="faint">' + (err?.message || '') + '</p></div>'));
+    viewHost.appendChild(el('<div class="empty"><p>Algo salió mal.</p><p class="faint">' + esc(err?.message || '') + '</p></div>'));
   }
 }
 

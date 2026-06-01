@@ -111,7 +111,10 @@ export async function importAll(data) {
     const t = db.transaction(names, 'readwrite');
     t.oncomplete = () => resolve(true);
     t.onerror = () => reject(t.error);
-    const arr = (v) => (Array.isArray(v) ? v : []);
+    // Solo filas que sean objetos con `id` (keyPath). Sin esto, una fila
+    // malformada haría que `put` lanzara DataError y el `clear()` ya encolado
+    // podría confirmarse igualmente → pérdida de datos con error.
+    const arr = (v) => (Array.isArray(v) ? v.filter((r) => r && typeof r === 'object' && r.id != null) : []);
     const map = {
       [STORES.EXERCISES]: arr(data.exercises),
       [STORES.GROUPS]: arr(data.groups),
