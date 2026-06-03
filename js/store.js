@@ -209,6 +209,22 @@ export function deleteBodyweight(id) { return db.remove(STORES.BODYWEIGHT, id); 
 
 /* ---------------- Estadísticas ---------------- */
 
+/** Sesiones finalizadas, opcionalmente desde un timestamp (ms), de más reciente a más antigua. */
+async function finishedSessions(since = null) {
+  const sessions = (await listSessions()).filter((s) => s.status === 'finished');
+  return since ? sessions.filter((s) => s.startedAt >= since) : sessions;
+}
+
+/**
+ * 1RM estimado con la fórmula de Epley: peso × (1 + reps/30).
+ * Para 1 repetición es el propio peso. Devuelve 0 si faltan datos.
+ */
+export function epley1RM(weight, reps) {
+  const w = num(weight), r = num(reps);
+  if (w <= 0 || r <= 0) return 0;
+  return r === 1 ? w : round(w * (1 + r / 30), 1);
+}
+
 /** Estadísticas de una única sesión. */
 export function sessionStats(session) {
   let totalSets = 0, totalReps = 0, totalVolume = 0;
@@ -240,8 +256,8 @@ export function sessionStats(session) {
 }
 
 /** Serie temporal de un ejercicio a lo largo de las sesiones finalizadas. */
-export async function exerciseProgress(exerciseId) {
-  const sessions = (await listSessions()).filter((s) => s.status === 'finished').reverse();
+export async function exerciseProgress(exerciseId, { since = null } = {}) {
+  const sessions = (await finishedSessions(since)).reverse();
   const series = [];
   for (const s of sessions) {
     const ex = (s.exercises || []).find((e) => e.exerciseId === exerciseId);
@@ -249,19 +265,21 @@ export async function exerciseProgress(exerciseId) {
     const counted = (ex.sets || []).filter((st) => num(st.reps) > 0 || num(st.weight) > 0);
     if (!counted.length) continue;
     const factor = ex.unilateral ? 2 : 1;
-    let vol = 0, top = 0;
+    let vol = 0, top = 0, best1RM = 0;
     for (const st of counted) {
       vol += num(st.reps) * num(st.weight) * factor;
       if (num(st.weight) > top) top = num(st.weight);
+      const rm = epley1RM(st.weight, st.reps);
+      if (rm > best1RM) best1RM = rm;
     }
-    series.push({ date: s.startedAt, volume: round(vol, 1), topWeight: round(top, 1) });
+    series.push({ date: s.startedAt, volume: round(vol, 1), topWeight: round(top, 1), est1RM: round(best1RM, 1) });
   }
   return series;
 }
 
 /** Resumen global para la pantalla de informes. */
-export async function globalStats() {
-  const sessions = (await listSessions()).filter((s) => s.status === 'finished');
+export async function globalStats({ since = null } = {}) {
+  const sessions = await finishedSessions(since);
   let totalVolume = 0, totalSets = 0, totalReps = 0;
   const volumeByDate = [];
   for (const s of sessions.slice().reverse()) {
@@ -292,10 +310,10 @@ export async function weekStats() {
 }
 
 /** Volumen y series acumulados por etiqueta (grupo muscular) en sesiones finalizadas. */
-export async function volumeByTag() {
+export async function volumeByTag({ since = null } = {}) {
   const exs = await db.getAll(STORES.EXERCISES);
   const tagMap = new Map(exs.map((e) => [e.id, exerciseTags(e)]));
-  const sessions = (await listSessions()).filter((s) => s.status === 'finished');
+  const sessions = await finishedSessions(since);
   const agg = new Map(); // tag -> { volume, sets, reps }
 
   for (const s of sessions) {
@@ -320,14 +338,102 @@ export async function volumeByTag() {
 }
 
 /** Estadísticas de duración de las sesiones finalizadas. */
-export async function durationStats() {
-  const sessions = (await listSessions()).filter(
-    (s) => s.status === 'finished' && s.startedAt && s.finishedAt && s.finishedAt > s.startedAt);
+export async function durationStats({ since = null } = {}) {
+  const sessions = (await finishedSessions(since)).filter(
+    (s) => s.startedAt && s.finishedAt && s.finishedAt > s.startedAt);
   const series = sessions.slice().reverse().map((s) => ({ date: s.startedAt, ms: s.finishedAt - s.startedAt }));
   const totalMs = series.reduce((a, d) => a + d.ms, 0);
   const avgMs = series.length ? totalMs / series.length : 0;
   const longestMs = series.reduce((m, d) => (d.ms > m ? d.ms : m), 0);
   return { count: series.length, totalMs, avgMs, longestMs, series };
+}
+
+/** Lunes (00:00 local) de la semana que contiene el timestamp. */
+function weekStart(ts) {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // lunes=0 … domingo=6
+  return d.getTime();
+}
+
+/**
+ * Frecuencia de entrenamiento por semanas (lunes a domingo, hora local):
+ * serie continua de semanas (incluye semanas sin sesión), media de
+ * sesiones/semana y rachas de semanas consecutivas con al menos una sesión.
+ * La semana en curso sin sesión todavía no rompe la racha actual.
+ */
+export async function frequencyStats({ since = null } = {}) {
+  const sessions = await finishedSessions(since);
+  if (!sessions.length) return { count: 0, weeks: [], avgPerWeek: 0, currentStreak: 0, bestStreak: 0 };
+
+  const counts = new Map(); // inicio de semana (ms) -> nº de sesiones
+  for (const s of sessions) {
+    const k = weekStart(s.startedAt);
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+
+  // Serie continua desde la primera semana hasta la actual (suma días, robusto frente a DST).
+  const weeks = [];
+  const last = weekStart(Date.now());
+  for (let t = Math.min(...counts.keys()); t <= last; ) {
+    weeks.push({ start: t, count: counts.get(t) || 0 });
+    const d = new Date(t);
+    d.setDate(d.getDate() + 7);
+    t = d.getTime();
+  }
+
+  let bestStreak = 0, run = 0;
+  for (const w of weeks) { run = w.count ? run + 1 : 0; if (run > bestStreak) bestStreak = run; }
+
+  let currentStreak = 0;
+  for (let i = weeks.length - 1; i >= 0; i--) {
+    if (weeks[i].count) currentStreak++;
+    else if (i === weeks.length - 1) continue; // semana en curso sin entrenar aún
+    else break;
+  }
+
+  return {
+    count: sessions.length,
+    weeks,
+    avgPerWeek: round(sessions.length / weeks.length, 1),
+    currentStreak,
+    bestStreak,
+  };
+}
+
+/**
+ * Récords personales por ejercicio sobre TODO el histórico (sesiones finalizadas):
+ * mejor peso, mejor serie (mayor peso×reps) y mejor 1RM estimado, con la fecha
+ * de la primera vez que se lograron. `isRecent` marca récords de los últimos 28 días.
+ */
+export async function personalRecords() {
+  const sessions = (await finishedSessions()).reverse(); // cronológico: la fecha del récord es la primera vez
+  const map = new Map(); // exerciseId -> récord
+  for (const s of sessions) {
+    for (const ex of s.exercises || []) {
+      for (const st of ex.sets || []) {
+        const w = num(st.weight), r = num(st.reps);
+        if (w <= 0 || r <= 0) continue;
+        let rec = map.get(ex.exerciseId);
+        if (!rec) {
+          rec = { exerciseId: ex.exerciseId, name: ex.name, topWeight: null, bestSet: null, best1RM: null };
+          map.set(ex.exerciseId, rec);
+        }
+        rec.name = ex.name; // se queda con el nombre del snapshot más reciente
+        const rm = epley1RM(w, r);
+        if (!rec.topWeight || w > rec.topWeight.weight) rec.topWeight = { weight: w, reps: r, date: s.startedAt };
+        if (!rec.bestSet || w * r > rec.bestSet.weight * rec.bestSet.reps) rec.bestSet = { weight: w, reps: r, date: s.startedAt };
+        if (!rec.best1RM || rm > rec.best1RM.value) rec.best1RM = { value: rm, weight: w, reps: r, date: s.startedAt };
+      }
+    }
+  }
+  const recentSince = Date.now() - 28 * 24 * 3600 * 1000;
+  return [...map.values()]
+    .map((r) => ({
+      ...r,
+      isRecent: [r.topWeight, r.bestSet, r.best1RM].some((x) => x && x.date >= recentSince),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
 }
 
 /* ---------------- Datos de ejemplo (semilla) ---------------- */

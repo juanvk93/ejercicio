@@ -341,6 +341,13 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary)
 .chart-dot { fill: var(--primary); }
 .chart-grid { stroke: var(--border); stroke-width: 1; }
 .chart-axis-label { fill: var(--text-faint); font-size: 10px; }
+.chart-bar { fill: var(--primary); }
+
+/* ---------- Récords personales (informes) ---------- */
+.pr-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.pr-item:first-child { padding-top: 0; }
+.pr-item:last-of-type { border-bottom: none; padding-bottom: 0; }
+.pr-item b { color: var(--text); font-weight: 700; }
 
 /* ---------- Calendario ---------- */
 .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }

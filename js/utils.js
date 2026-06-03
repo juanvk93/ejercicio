@@ -228,3 +228,58 @@ export function lineChart(points, { unit = '', height = 180 } = {}) {
       </svg>
     </div>`;
 }
+
+/* ---------- Gráfica de barras SVG ---------- */
+/**
+ * Genera un SVG de gráfica de barras. El eje Y siempre parte de 0.
+ * points: [{ x: label, y: number }]
+ */
+export function barChart(points, { height = 160 } = {}) {
+  if (!points || points.length === 0) {
+    return '<div class="empty"><p>Sin datos suficientes.</p></div>';
+  }
+  const W = 320, H = height;
+  const padL = 30, padR = 12, padT = 16, padB = 26;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  const max = Math.max(...points.map((p) => p.y), 1);
+  const n = points.length;
+  const slot = innerW / n;
+  const barW = Math.max(2, Math.min(26, slot * 0.7));
+
+  // Líneas de cuadrícula y etiquetas Y (3 niveles)
+  let grid = '';
+  for (let k = 0; k <= 2; k++) {
+    const v = (max * k) / 2;
+    const y = padT + innerH - (v / max) * innerH;
+    grid += `<line class="chart-grid" x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}"/>`;
+    grid += `<text class="chart-axis-label" x="4" y="${(y + 3).toFixed(1)}">${fmtNum(round(v, 1))}</text>`;
+  }
+
+  const bars = points.map((p, i) => {
+    const h = (p.y / max) * innerH;
+    const x = padL + slot * i + (slot - barW) / 2;
+    const y = padT + innerH - h;
+    if (p.y <= 0) return '';
+    return `<rect class="chart-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 2).toFixed(1)}" rx="2"/>`;
+  }).join('');
+
+  // Etiquetas X: primera, media y última para no saturar
+  const idxs = n <= 4 ? points.map((_, i) => i) : [0, Math.floor((n - 1) / 2), n - 1];
+  const xLabels = idxs.map((i) => {
+    const cx = padL + slot * i + slot / 2;
+    const anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+    const x = i === 0 ? padL : (i === n - 1 ? W - padR : cx);
+    return `<text class="chart-axis-label" x="${x.toFixed(1)}" y="${H - 8}" text-anchor="${anchor}">${esc(points[i].x)}</text>`;
+  }).join('');
+
+  return `
+    <div class="chart-wrap">
+      <svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Gráfica de barras">
+        ${grid}
+        ${bars}
+        ${xLabels}
+      </svg>
+    </div>`;
+}
