@@ -139,6 +139,27 @@ export async function buildSessionExercises(exerciseIds, existingIds = new Set()
 }
 
 /**
+ * Crea (sin guardar) una nueva sesión activa a partir de una sesión pasada:
+ * repite los mismos ejercicios (en orden) precargando la última vez de cada uno.
+ * Conserva los grupos y el nombre; el temporizador se hereda si la pasada lo tenía.
+ */
+export async function buildSessionFromPast(pastSession, opts = {}) {
+  const ids = (pastSession.exercises || []).map((e) => e.exerciseId).filter(Boolean);
+  const exercises = await buildSessionExercises(ids);
+  const past = pastSession.restTimer || {};
+  return {
+    id: uid(),
+    groupIds: [...(pastSession.groupIds || [])],
+    groupName: pastSession.groupName || 'Entreno repetido',
+    status: 'active',
+    startedAt: opts.startedAt || Date.now(),
+    finishedAt: null,
+    restTimer: { enabled: !!past.enabled, seconds: Math.max(5, Math.round(num(past.seconds) || 90)) },
+    exercises,
+  };
+}
+
+/**
  * Crea (sin guardar todavía) una nueva sesión a partir de uno o varios grupos,
  * combinando sus ejercicios sin duplicados. `opts.startedAt` permite definir día/hora.
  */
@@ -149,6 +170,12 @@ export async function buildNewSession(groups, opts = {}) {
 
   const exercises = await buildSessionExercises(exerciseIds);
 
+  // Temporizador de descanso: opcional, se decide al crear la sesión (desactivado por defecto).
+  const rt = opts.restTimer || {};
+  const restTimer = rt.enabled
+    ? { enabled: true, seconds: Math.max(5, Math.round(num(rt.seconds) || 90)) }
+    : { enabled: false, seconds: Math.max(5, Math.round(num(rt.seconds) || 90)) };
+
   return {
     id: uid(),
     groupIds: groupList.map((g) => g.id),
@@ -156,6 +183,8 @@ export async function buildNewSession(groups, opts = {}) {
     status: 'active',
     startedAt: opts.startedAt || Date.now(),
     finishedAt: null,
+    restTimer,
+    trackRpe: !!opts.trackRpe,
     exercises,
   };
 }
@@ -207,6 +236,69 @@ export function saveBodyweight({ id, date, weight }) {
 }
 export function deleteBodyweight(id) { return db.remove(STORES.BODYWEIGHT, id); }
 
+/* ---------------- Medidas corporales ---------------- */
+/** Tipos de medida sugeridos (además de los que el usuario haya creado). */
+export const DEFAULT_MEASUREMENTS = ['Cintura', 'Pecho', 'Bíceps', 'Muslo', 'Cadera', 'Cuello', 'Gemelo'];
+
+/** Registros de medidas (todas o de un tipo), ordenados por fecha. */
+export async function listMeasurements(type = null) {
+  const all = await db.getAll(STORES.MEASUREMENTS);
+  const filtered = type ? all.filter((m) => m.type === type) : all;
+  return filtered.sort((a, b) => a.date.localeCompare(b.date));
+}
+export function saveMeasurement({ id, type, date, value }) {
+  const r = { id: id || uid(), type: String(type).trim(), date, value: round(num(value), 2) };
+  return db.put(STORES.MEASUREMENTS, r);
+}
+export function deleteMeasurement(id) { return db.remove(STORES.MEASUREMENTS, id); }
+
+/** Tipos de medida existentes + sugeridos, ordenados. */
+export async function measurementTypes() {
+  const all = await db.getAll(STORES.MEASUREMENTS);
+  const set = new Set(DEFAULT_MEASUREMENTS);
+  for (const m of all) if (m.type) set.add(m.type);
+  return [...set].sort((a, b) => a.localeCompare(b, 'es'));
+}
+
+/* ---------------- Objetivos / metas ---------------- */
+export async function listGoals() {
+  const all = await db.getAll(STORES.GOALS);
+  return all.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+export function saveGoal({ id, exerciseId, metric = 'topWeight', target, createdAt }) {
+  const g = {
+    id: id || uid(),
+    exerciseId,
+    metric: metric === 'est1RM' ? 'est1RM' : 'topWeight',
+    target: round(num(target), 2),
+    createdAt: createdAt || Date.now(), // se conserva al editar (se pasa el original)
+  };
+  return db.put(STORES.GOALS, g);
+}
+export function deleteGoal(id) { return db.remove(STORES.GOALS, id); }
+
+/**
+ * Progreso de cada objetivo: valor actual (mejor histórico del ejercicio según
+ * la métrica), porcentaje y si ya se ha alcanzado. Reaprovecha personalRecords.
+ */
+export async function goalProgress() {
+  const [goals, prs, exs] = await Promise.all([listGoals(), personalRecords(), db.getAll(STORES.EXERCISES)]);
+  const prMap = new Map(prs.map((r) => [r.exerciseId, r]));
+  const nameMap = new Map(exs.map((e) => [e.id, e.name]));
+  return goals.map((g) => {
+    const pr = prMap.get(g.exerciseId);
+    const current = pr ? (g.metric === 'est1RM' ? pr.best1RM.value : pr.topWeight.weight) : 0;
+    const pct = g.target > 0 ? Math.min(100, Math.round((current / g.target) * 100)) : 0;
+    return {
+      ...g,
+      name: nameMap.get(g.exerciseId) || '(ejercicio borrado)',
+      current: round(current, 1),
+      pct,
+      achieved: current >= g.target && g.target > 0,
+    };
+  });
+}
+
 /* ---------------- Estadísticas ---------------- */
 
 /** Sesiones finalizadas, opcionalmente desde un timestamp (ms), de más reciente a más antigua. */
@@ -228,6 +320,7 @@ export function epley1RM(weight, reps) {
 /** Estadísticas de una única sesión. */
 export function sessionStats(session) {
   let totalSets = 0, totalReps = 0, totalVolume = 0;
+  let rpeSum = 0, rpeCount = 0;
   const perExercise = [];
   for (const ex of session.exercises || []) {
     // Unilateral: se hace con ambos lados, así que el volumen cuenta el doble.
@@ -239,6 +332,7 @@ export function sessionStats(session) {
       vol += r * w * factor;
       reps += r;
       if (w > topWeight) topWeight = w;
+      if (s.rpe != null && num(s.rpe) > 0) { rpeSum += num(s.rpe); rpeCount++; }
     }
     totalSets += counted.length;
     totalReps += reps;
@@ -251,6 +345,7 @@ export function sessionStats(session) {
   const duration = session.finishedAt && session.startedAt ? session.finishedAt - session.startedAt : 0;
   return {
     totalSets, totalReps, totalVolume: round(totalVolume, 1), duration,
+    avgRpe: rpeCount ? round(rpeSum / rpeCount, 1) : null,
     exerciseCount: perExercise.length, perExercise,
   };
 }
@@ -275,6 +370,48 @@ export async function exerciseProgress(exerciseId, { since = null } = {}) {
     series.push({ date: s.startedAt, volume: round(vol, 1), topWeight: round(top, 1), est1RM: round(best1RM, 1) });
   }
   return series;
+}
+
+/**
+ * Historial completo de un ejercicio: cada sesión finalizada que lo contiene,
+ * con sus series y estadísticas (volumen, peso máx y 1RM est.), de más reciente
+ * a más antigua, más un resumen agregado.
+ */
+export async function exerciseHistory(exerciseId) {
+  const sessions = (await finishedSessions()).sort((a, b) => b.startedAt - a.startedAt);
+  const entries = [];
+  let bestWeight = 0, best1RM = 0, totalVolume = 0, totalSets = 0;
+  for (const s of sessions) {
+    const ex = (s.exercises || []).find((e) => e.exerciseId === exerciseId);
+    if (!ex) continue;
+    const counted = (ex.sets || []).filter((st) => num(st.reps) > 0 || num(st.weight) > 0);
+    if (!counted.length) continue;
+    const factor = ex.unilateral ? 2 : 1;
+    let vol = 0, top = 0, rm = 0, reps = 0;
+    for (const st of counted) {
+      vol += num(st.reps) * num(st.weight) * factor;
+      reps += num(st.reps);
+      if (num(st.weight) > top) top = num(st.weight);
+      const r = epley1RM(st.weight, st.reps);
+      if (r > rm) rm = r;
+    }
+    if (top > bestWeight) bestWeight = top;
+    if (rm > best1RM) best1RM = rm;
+    totalVolume += vol; totalSets += counted.length;
+    entries.push({
+      sessionId: s.id, date: s.startedAt, unilateral: !!ex.unilateral,
+      sets: counted.map((st) => ({ reps: num(st.reps), weight: num(st.weight), rpe: st.rpe != null ? num(st.rpe) : null })),
+      volume: round(vol, 1), topWeight: round(top, 1), est1RM: round(rm, 1), reps,
+    });
+  }
+  return {
+    entries,
+    sessionCount: entries.length,
+    bestWeight: round(bestWeight, 1),
+    best1RM: round(best1RM, 1),
+    totalVolume: round(totalVolume, 1),
+    totalSets,
+  };
 }
 
 /** Resumen global para la pantalla de informes. */

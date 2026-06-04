@@ -4,10 +4,10 @@
    recordar la última vez, finalizar y ver estadísticas.
    ============================================================ */
 
-import { el, esc, num, fmtDate, fmtTime, fmtDuration, fmtNum, toast, confirmDialog, showModal,
+import { el, esc, num, round, fmtDate, fmtTime, fmtDuration, fmtNum, toast, confirmDialog, showModal,
   tsFromDateTime, dateInputValue, timeInputValue } from '../utils.js';
 import { navigate } from '../router.js';
-import { unitLabel } from '../prefs.js';
+import { unitLabel, getUnit } from '../prefs.js';
 import * as store from '../store.js';
 
 /* ---------------- Sesión activa ---------------- */
@@ -16,7 +16,26 @@ export async function session(ctx) {
   if (!s) return notFound();
   if (s.status === 'finished') { navigate(`#/session/${s.id}/summary`); return { title: '', back: '#/', node: el('<div></div>') }; }
 
+  stopRest(); // descarta un temporizador que quedara de una visita anterior
+
   const node = el('<div></div>');
+
+  // Récords previos por ejercicio (la sesión activa no está finalizada → no se incluye).
+  const prMap = new Map();
+  for (const r of await store.personalRecords()) {
+    prMap.set(r.exerciseId, { topWeight: r.topWeight.weight, best1RM: r.best1RM.value });
+  }
+
+  // Barra de temporizador de descanso (solo si se activó al crear la sesión).
+  const restBar = s.restTimer && s.restTimer.enabled ? createRestBar(s.restTimer.seconds || 90) : null;
+
+  // Contexto compartido con las filas de series (PR en vivo + arranque del descanso).
+  const sctx = {
+    onSetDone(ex, set) {
+      celebratePR(ex, set, prMap);
+      if (restBar) restBar.start();
+    },
+  };
 
   // Cabecera de progreso
   const header = el(`
@@ -55,7 +74,7 @@ export async function session(ctx) {
 
   // Render de cada ejercicio
   s.exercises.forEach((ex, exIdx) => {
-    node.appendChild(renderExercise(s, ex, exIdx));
+    node.appendChild(renderExercise(s, ex, exIdx, sctx));
   });
 
   // Añadir más ejercicios a la sesión en curso (por grupo o sueltos).
@@ -68,6 +87,9 @@ export async function session(ctx) {
   addRow.querySelector('#add-ex').onclick = () => openAddExercises(s);
   node.appendChild(addRow);
 
+  // Notas de la sesión (texto libre)
+  node.appendChild(renderNotesCard(s));
+
   // Acciones finales
   const actions = el(`
     <div class="btn-row mt">
@@ -76,6 +98,7 @@ export async function session(ctx) {
     </div>`);
   actions.querySelector('#finish-session').onclick = async () => {
     cancelAutosave(); // descarta un guardado pendiente: persistimos el estado final aquí.
+    stopRest();
     s.status = 'finished';
     s.finishedAt = Date.now();
     await store.saveSession(s);
@@ -85,12 +108,17 @@ export async function session(ctx) {
   actions.querySelector('#cancel-session').onclick = async () => {
     if (await confirmDialog('¿Descartar esta sesión? Se perderán los datos registrados.', { okText: 'Descartar' })) {
       cancelAutosave(); // evita que un autosave pendiente recree la sesión tras borrarla.
+      stopRest();
       await store.deleteSession(s.id);
       toast('Sesión descartada');
       navigate('#/');
     }
   };
   node.appendChild(actions);
+
+  // La barra del temporizador vive dentro del nodo de la vista: al cambiar de
+  // vista se quita del DOM y el propio `tick` se autodetiene.
+  if (restBar) node.appendChild(restBar.el);
 
   return { title: 'Sesión activa', back: '#/', node };
 }
@@ -103,6 +131,124 @@ function autosave(s) {
 }
 /** Cancela un autosave pendiente (evita re-escribir una sesión ya borrada/finalizada). */
 function cancelAutosave() { clearTimeout(_saveTimer); }
+
+/** Tarjeta de notas de la sesión (texto libre con autosave). */
+function renderNotesCard(s) {
+  const card = el(`
+    <div class="card mt">
+      <div class="section-title" style="margin-top:0">Notas de la sesión</div>
+      <textarea class="input" id="se-notes" rows="2" placeholder="¿Cómo te sentiste? Energía, molestias, técnica…">${esc(s.notes || '')}</textarea>
+    </div>`);
+  card.querySelector('#se-notes').oninput = (e) => { s.notes = e.target.value; autosave(s); };
+  return card;
+}
+
+/** Repite una sesión pasada creando una nueva activa con los mismos ejercicios. */
+export async function repeatSession(past) {
+  const active = await store.getActiveSession();
+  if (active) {
+    toast('Ya tienes una sesión en curso. Finalízala antes de repetir otra.', 'error');
+    navigate(`#/session/${active.id}`);
+    return;
+  }
+  const ns = await store.buildSessionFromPast(past, { startedAt: Date.now() });
+  if (!ns.exercises.length) { toast('Esta sesión no tiene ejercicios para repetir', 'error'); return; }
+  await store.saveSession(ns);
+  toast('Entreno repetido: ¡a darle!', 'success');
+  navigate(`#/session/${ns.id}`);
+}
+
+/* ---------------- Récord personal en vivo ---------------- */
+/**
+ * Avisa con un toast si la serie recién completada bate el récord previo de
+ * peso o de 1RM estimado del ejercicio. `prMap` mantiene el mejor visto y se va
+ * actualizando para celebrar también mejoras sucesivas dentro de la sesión.
+ */
+function celebratePR(ex, set, prMap) {
+  const w = num(set.weight), r = num(set.reps);
+  if (w <= 0 || r <= 0) return;
+  const rm = store.epley1RM(w, r);
+  const u = unitLabel();
+  const pr = prMap.get(ex.exerciseId);
+  if (!pr) { prMap.set(ex.exerciseId, { topWeight: w, best1RM: rm }); return; } // sin histórico: fija base, no celebra
+  let shown = false;
+  if (w > pr.topWeight) {
+    toast(`🏆 ¡Récord de peso en ${ex.name}! ${fmtNum(w)} ${u}`, 'success');
+    pr.topWeight = w; shown = true;
+  }
+  if (rm > pr.best1RM) {
+    if (!shown) toast(`🏆 ¡Récord de 1RM est. en ${ex.name}! ${fmtNum(rm)} ${u}`, 'success');
+    pr.best1RM = rm;
+  }
+}
+
+/* ---------------- Temporizador de descanso ---------------- */
+let _restInt = null;
+let _audioCtx = null;
+function stopRest() { if (_restInt) { clearInterval(_restInt); _restInt = null; } }
+
+/** Prepara/reanuda el contexto de audio dentro del gesto del usuario (toque). */
+function unlockAudio() {
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  } catch (e) { /* dispositivo sin audio: se ignora */ }
+}
+/** Pitido corto generado con WebAudio (sin archivos de sonido). */
+function beep() {
+  try {
+    const ctx = _audioCtx;
+    if (!ctx) return;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'sine'; o.frequency.value = 880;
+    const t = ctx.currentTime;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    o.start(t); o.stop(t + 0.47);
+  } catch (e) { /* se ignora */ }
+}
+function vibrate(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* se ignora */ } }
+
+/** Crea la barra flotante del temporizador. Devuelve { el, start }. */
+function createRestBar(seconds) {
+  const bar = el(`
+    <div class="rest-bar" hidden>
+      <button class="rest-btn" data-act="dec" type="button" aria-label="Menos 15 segundos">−15</button>
+      <button class="rest-btn" data-act="toggle" type="button" aria-label="Pausar o reanudar">⏸</button>
+      <div class="rest-time">0:00</div>
+      <button class="rest-btn" data-act="inc" type="button" aria-label="Más 15 segundos">+15</button>
+      <button class="rest-btn rest-skip" data-act="skip" type="button" aria-label="Saltar descanso">✕</button>
+    </div>`);
+  const timeEl = bar.querySelector('.rest-time');
+  const toggleBtn = bar.querySelector('[data-act="toggle"]');
+  let remaining = 0, paused = false;
+  const fmt = (n) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+  const paint = () => { timeEl.textContent = fmt(Math.max(0, remaining)); toggleBtn.textContent = paused ? '▶' : '⏸'; };
+  function finish() { stopRest(); bar.hidden = true; beep(); vibrate([180, 80, 180]); toast('⏱️ ¡Descanso terminado!'); }
+  function tick() {
+    if (!document.body.contains(bar)) { stopRest(); return; } // se cambió de vista → autolimpieza
+    if (paused) return;
+    remaining -= 1;
+    paint();
+    if (remaining <= 0) finish();
+  }
+  bar.querySelector('[data-act="dec"]').onclick = () => { remaining = Math.max(5, remaining - 15); paint(); };
+  bar.querySelector('[data-act="inc"]').onclick = () => { remaining += 15; paint(); };
+  toggleBtn.onclick = () => { paused = !paused; paint(); };
+  bar.querySelector('[data-act="skip"]').onclick = () => { stopRest(); bar.hidden = true; };
+  return {
+    el: bar,
+    start() {
+      unlockAudio();
+      remaining = seconds; paused = false;
+      bar.hidden = false; paint();
+      stopRest();
+      _restInt = setInterval(tick, 1000);
+    },
+  };
+}
 
 /** Modal para añadir uno o varios grupos a la sesión en curso. */
 async function openAddGroups(s) {
@@ -141,7 +287,7 @@ async function openAddGroups(s) {
     close();
     toast(added > 0 ? `${added} ejercicio${added === 1 ? '' : 's'} añadido${added === 1 ? '' : 's'}` : 'Ya estaban todos en la sesión',
       added > 0 ? 'success' : '');
-    navigate(`#/session/${s.id}`);
+    navigate(`#/session/${s.id}${s.status === 'finished' ? '/edit' : ''}`);
   };
 }
 
@@ -203,22 +349,37 @@ async function openAddExercises(s) {
     const added = await store.addExercisesToSession(s, [...selected]);
     close();
     toast(`${added} ejercicio${added === 1 ? '' : 's'} añadido${added === 1 ? '' : 's'}`, 'success');
-    navigate(`#/session/${s.id}`);
+    navigate(`#/session/${s.id}${s.status === 'finished' ? '/edit' : ''}`);
   };
 }
 
-function renderExercise(s, ex, exIdx) {
-  const card = el(`<div class="card"></div>`);
+function renderExercise(s, ex, exIdx, sctx) {
+  const isLast = s.exercises[s.exercises.length - 1] === ex;
+  const card = el(`<div class="card${ex.supersetNext ? ' superset-linked' : ''}"></div>`);
+  const badges = [];
+  if (ex.unilateral) badges.push('<span class="badge" style="white-space:nowrap">Unilateral ×2</span>');
+  if (ex.supersetNext) badges.push('<span class="badge" style="white-space:nowrap">⛓ Superserie</span>');
   const head = el(`
     <div class="row between" style="gap:8px;margin-bottom:4px;align-items:flex-start">
       <div class="grow" style="min-width:0">
         <div style="font-weight:800;font-size:16px;line-height:1.25">${esc(ex.name)}</div>
-        ${ex.unilateral ? '<div style="margin-top:6px"><span class="badge" style="white-space:nowrap">Unilateral ×2</span></div>' : ''}
+        ${badges.length ? `<div class="row wrap" style="gap:6px;margin-top:6px">${badges.join('')}</div>` : ''}
       </div>
-      <button class="icon-btn" data-act="rm-ex" aria-label="Quitar ejercicio de la sesión" style="width:34px;height:34px;flex-shrink:0">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-      </button>
+      <div class="row" style="gap:2px;flex-shrink:0">
+        ${isLast ? '' : `<button class="icon-btn" data-act="superset" aria-label="Superserie con el siguiente" title="Superserie con el siguiente" style="width:34px;height:34px;${ex.supersetNext ? 'color:var(--primary)' : ''}">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>
+        </button>`}
+        <button class="icon-btn" data-act="rm-ex" aria-label="Quitar ejercicio de la sesión" style="width:34px;height:34px">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+        </button>
+      </div>
     </div>`);
+  const ssBtn = head.querySelector('[data-act="superset"]');
+  if (ssBtn) ssBtn.onclick = async () => {
+    ex.supersetNext = !ex.supersetNext;
+    await store.saveSession(s);
+    navigate(`#/session/${s.id}${s.status === 'finished' ? '/edit' : ''}`);
+  };
   head.querySelector('[data-act="rm-ex"]').onclick = async () => {
     const logged = (ex.sets || []).some((st) => num(st.reps) > 0 || num(st.weight) > 0);
     const msg = logged
@@ -229,13 +390,40 @@ function renderExercise(s, ex, exIdx) {
       if (idx >= 0) s.exercises.splice(idx, 1);
       await store.saveSession(s);
       toast('Ejercicio quitado');
-      navigate(`#/session/${s.id}`);
+      navigate(`#/session/${s.id}${s.status === 'finished' ? '/edit' : ''}`);
     }
   };
   card.appendChild(head);
 
+  function renderRows() {
+    tbody.innerHTML = '';
+    ex.sets.forEach((set, i) => tbody.appendChild(renderSetRow(s, ex, set, i, renderRows, sctx)));
+  }
+
   if (ex.previous) {
-    card.appendChild(el(`<div class="sub faint" style="margin-bottom:10px">Última vez · ${fmtDate(ex.previous.date)}</div>`));
+    const hasWeight = (ex.previous.sets || []).some((st) => num(st.weight) > 0);
+    const row = el(`
+      <div class="row between" style="gap:8px;margin-bottom:10px">
+        <div class="sub faint">Última vez · ${fmtDate(ex.previous.date)}</div>
+      </div>`);
+    if (hasWeight) {
+      // Progresión automática: sube el peso de la última vez un escalón (sobrecarga progresiva).
+      const step = getUnit() === 'lb' ? 5 : 2.5;
+      const btn = el(`<button class="chip" type="button" style="padding:4px 10px;font-size:12px;white-space:nowrap">📈 +${fmtNum(step)} ${esc(unitLabel())}</button>`);
+      btn.onclick = () => {
+        ex.sets.forEach((set, i) => {
+          const pv = ex.previous.sets[i];
+          const base = pv ? num(pv.weight) : num(set.weight);
+          set.weight = round(base + step, 2);
+          set.done = false;
+        });
+        renderRows();
+        autosave(s);
+        toast(`Sugerencia aplicada: +${fmtNum(step)} ${unitLabel()}`, 'success');
+      };
+      row.appendChild(btn);
+    }
+    card.appendChild(row);
   } else {
     card.appendChild(el(`<div class="sub faint" style="margin-bottom:10px">Primera vez con este ejercicio</div>`));
   }
@@ -248,17 +436,13 @@ function renderExercise(s, ex, exIdx) {
           <th>Anterior</th>
           <th>Reps</th>
           <th>${esc(unitLabel().toUpperCase())}</th>
+          ${s.trackRpe ? '<th class="set-rpe">RPE</th>' : ''}
           <th></th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>`);
   const tbody = table.querySelector('tbody');
-
-  function renderRows() {
-    tbody.innerHTML = '';
-    ex.sets.forEach((set, i) => tbody.appendChild(renderSetRow(s, ex, set, i, renderRows)));
-  }
   renderRows();
   card.appendChild(table);
 
@@ -273,7 +457,7 @@ function renderExercise(s, ex, exIdx) {
   return card;
 }
 
-function renderSetRow(s, ex, set, i, renderRows) {
+function renderSetRow(s, ex, set, i, renderRows, sctx) {
   const prev = ex.previous && ex.previous.sets[i]
     ? `${fmtNum(ex.previous.sets[i].reps)}×${fmtNum(ex.previous.sets[i].weight)}`
     : '—';
@@ -283,6 +467,7 @@ function renderSetRow(s, ex, set, i, renderRows) {
       <td class="prev-cell">${prev}</td>
       <td><input class="input-inline" type="number" inputmode="numeric" min="0" step="1" value="${set.reps || ''}" placeholder="0" data-f="reps"></td>
       <td><input class="input-inline" type="number" inputmode="decimal" min="0" step="0.5" value="${set.weight || ''}" placeholder="0" data-f="weight"></td>
+      ${s.trackRpe ? `<td class="set-rpe"><input class="input-inline" type="number" inputmode="decimal" min="0" max="10" step="0.5" value="${set.rpe != null ? set.rpe : ''}" placeholder="–" data-f="rpe"></td>` : ''}
       <td>
         <div class="row" style="gap:2px">
           <button class="set-done-btn ${set.done ? 'done' : ''}" data-act="done" aria-label="Completar serie">
@@ -297,11 +482,18 @@ function renderSetRow(s, ex, set, i, renderRows) {
 
   tr.querySelector('[data-f="reps"]').oninput = (e) => { set.reps = num(e.target.value); autosave(s); };
   tr.querySelector('[data-f="weight"]').oninput = (e) => { set.weight = num(e.target.value); autosave(s); };
+  const rpeInput = tr.querySelector('[data-f="rpe"]');
+  if (rpeInput) rpeInput.oninput = (e) => {
+    const v = e.target.value;
+    if (v === '') delete set.rpe; else set.rpe = num(v);
+    autosave(s);
+  };
   tr.querySelector('[data-act="done"]').onclick = () => {
     set.done = !set.done;
     tr.classList.toggle('done', set.done);
     tr.querySelector('[data-act="done"]').classList.toggle('done', set.done);
     autosave(s);
+    if (set.done && sctx) sctx.onSetDone(ex, set);
   };
   tr.querySelector('[data-act="del"]').onclick = () => {
     if (ex.sets.length <= 1) { ex.sets[0] = { reps: 0, weight: 0, done: false }; }
@@ -310,6 +502,50 @@ function renderSetRow(s, ex, set, i, renderRows) {
     autosave(s);
   };
   return tr;
+}
+
+/* ---------------- Edición de una sesión finalizada ---------------- */
+export async function editSession(ctx) {
+  const s = await store.getSession(ctx.params.id);
+  if (!s) return notFound();
+  if (s.status !== 'finished') { navigate(`#/session/${s.id}`); return { title: '', back: '#/', node: el('<div></div>') }; }
+
+  stopRest();
+  const node = el('<div></div>');
+  node.appendChild(el(`
+    <div class="card">
+      <div class="row between">
+        <div class="grow">
+          <div style="font-weight:800;font-size:18px">${esc(s.groupName)}</div>
+          <div class="sub muted">${fmtDate(s.startedAt)} · editando series</div>
+        </div>
+        <span class="badge">Editar</span>
+      </div>
+    </div>`));
+
+  const sctx = { onSetDone() {} }; // al editar no hay récord en vivo ni descanso
+  s.exercises.forEach((ex, i) => node.appendChild(renderExercise(s, ex, i, sctx)));
+
+  const addRow = el(`
+    <div class="btn-row mt">
+      <button class="btn ghost" id="add-group">+ Grupo</button>
+      <button class="btn ghost" id="add-ex">+ Ejercicio</button>
+    </div>`);
+  addRow.querySelector('#add-group').onclick = () => openAddGroups(s);
+  addRow.querySelector('#add-ex').onclick = () => openAddExercises(s);
+  node.appendChild(addRow);
+
+  node.appendChild(renderNotesCard(s));
+
+  const done = el('<button class="btn primary block mt" id="done-edit">Guardar y volver</button>');
+  done.onclick = async () => {
+    await store.saveSession(s);
+    toast('Cambios guardados', 'success');
+    navigate(`#/session/${s.id}/summary`);
+  };
+  node.appendChild(done);
+
+  return { title: 'Editar sesión', back: `#/session/${s.id}/summary`, node };
 }
 
 /* ---------------- Resumen / estadísticas de la sesión ---------------- */
@@ -334,6 +570,10 @@ export async function sessionSummary(ctx) {
       <div class="stat"><div class="val" id="dur-val">${fmtDuration(st.duration)}</div><div class="lbl">Duración</div></div>
     </div>`);
   node.appendChild(statGrid);
+
+  if (st.avgRpe != null) {
+    node.appendChild(el(`<div class="faint center mt" style="font-size:13px">RPE medio: <b style="color:var(--text)">${fmtNum(st.avgRpe)}</b> / 10</div>`));
+  }
 
   // Horario editable (día, inicio y fin) → recalcula la duración en vivo.
   const sched = el(`
@@ -391,6 +631,21 @@ export async function sessionSummary(ctx) {
   }
   if (!st.perExercise.length) list.appendChild(el('<div class="empty"><p>No se registraron series.</p></div>'));
   node.appendChild(list);
+
+  // Notas de la sesión (si las hay)
+  if (s.notes && s.notes.trim()) {
+    node.appendChild(el('<div class="section-title">Notas</div>'));
+    node.appendChild(el(`<div class="card"><div style="white-space:pre-wrap">${esc(s.notes)}</div></div>`));
+  }
+
+  const editRow = el(`
+    <div class="btn-row mt">
+      <button class="btn ghost" id="edit-session">Editar series</button>
+      <button class="btn ghost" id="repeat-session">Repetir entreno</button>
+    </div>`);
+  editRow.querySelector('#edit-session').onclick = () => navigate(`#/session/${s.id}/edit`);
+  editRow.querySelector('#repeat-session').onclick = () => repeatSession(s);
+  node.appendChild(editRow);
 
   const actions = el(`
     <div class="btn-row mt">

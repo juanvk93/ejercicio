@@ -3,10 +3,11 @@
    Botón "Nueva Sesión", sesión activa (si existe) y recientes.
    ============================================================ */
 
-import { el, esc, fmtDate, fmtDuration, fmtNum, confirmDialog, toast, todayISO, timeInputValue, tsFromDateTime, showModal } from '../utils.js';
+import { el, esc, num, fmtDate, fmtDuration, fmtNum, confirmDialog, toast, todayISO, timeInputValue, tsFromDateTime, showModal } from '../utils.js';
 import { navigate } from '../router.js';
 import { unitLabel } from '../prefs.js';
 import * as store from '../store.js';
+import { repeatSession } from './session.js';
 
 // Icono de mancuerna reutilizable para los avatares de sesión.
 const DUMBBELL = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="9" y="10.5" width="6" height="3" rx="1.2"/><rect x="6.5" y="7.5" width="2.4" height="9" rx="1.1"/><rect x="15.1" y="7.5" width="2.4" height="9" rx="1.1"/><rect x="3.6" y="9.2" width="1.9" height="5.6" rx="0.9"/><rect x="18.5" y="9.2" width="1.9" height="5.6" rx="0.9"/></svg>';
@@ -83,12 +84,16 @@ export async function home() {
             <div class="title">${esc(s.groupName)}</div>
             <div class="sub">${fmtDate(s.startedAt)} · ${st.totalSets} series · ${st.totalVolume} ${esc(unitLabel())} vol · ${fmtDuration(st.duration)}</div>
           </div>
+          <button class="icon-btn" data-act="repeat" aria-label="Repetir entreno" title="Repetir entreno">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          </button>
           <button class="icon-btn" data-act="del" aria-label="Eliminar">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
           </button>
         </div>`);
       item.querySelector('.av').onclick = () => navigate(`#/session/${s.id}/summary`);
       item.querySelector('.grow').onclick = () => navigate(`#/session/${s.id}/summary`);
+      item.querySelector('[data-act="repeat"]').onclick = (e) => { e.stopPropagation(); repeatSession(s); };
       item.querySelector('[data-act="del"]').onclick = async (e) => {
         e.stopPropagation();
         if (await confirmDialog('¿Eliminar esta sesión? No se puede deshacer.')) {
@@ -148,11 +153,30 @@ async function onNewSession(groups) {
           <input class="input" type="time" id="s-time" value="${timeInputValue(Date.now())}">
         </div>
       </div>
+      <div class="field" style="margin-top:6px;margin-bottom:0">
+        <label class="row" style="gap:10px;cursor:pointer;margin:0">
+          <input type="checkbox" id="s-rest">
+          <span>Temporizador de descanso entre series</span>
+        </label>
+        <div id="s-rest-wrap" hidden style="margin-top:10px">
+          <label>Descanso (segundos)</label>
+          <input class="input" type="number" inputmode="numeric" min="5" step="5" value="90" id="s-rest-secs">
+        </div>
+      </div>
+      <div class="field" style="margin-top:6px;margin-bottom:0">
+        <label class="row" style="gap:10px;cursor:pointer;margin:0">
+          <input type="checkbox" id="s-rpe">
+          <span>Registrar RPE/RIR por serie</span>
+        </label>
+      </div>
       <button class="btn primary block mt" id="start" disabled>Comenzar sesión</button>
     </div>`);
 
   const chipsHost = content.querySelector('#g-chips');
   const startBtn = content.querySelector('#start');
+  const restChk = content.querySelector('#s-rest');
+  const restWrap = content.querySelector('#s-rest-wrap');
+  restChk.onchange = () => { restWrap.hidden = !restChk.checked; };
   for (const g of groups) {
     const exCount = g.exerciseIds.length;
     const chip = el(`<button class="chip">${esc(g.name)}${exCount ? ` · ${exCount}` : ''}</button>`);
@@ -174,7 +198,9 @@ async function onNewSession(groups) {
     const chosen = [];
     for (const g of groups) if (selected.has(g.id)) chosen.push(await store.getGroup(g.id));
     const startedAt = tsFromDateTime(date, time);
-    const session = await store.buildNewSession(chosen, { startedAt });
+    const restTimer = { enabled: restChk.checked, seconds: num(content.querySelector('#s-rest-secs').value) || 90 };
+    const trackRpe = content.querySelector('#s-rpe').checked;
+    const session = await store.buildNewSession(chosen, { startedAt, restTimer, trackRpe });
     if (!session.exercises.length) { toast('Los grupos elegidos no tienen ejercicios', 'error'); return; }
     await store.saveSession(session);
     close();

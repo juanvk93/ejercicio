@@ -11,10 +11,12 @@ import * as store from './store.js';
 
 // Vistas
 import { home } from './views/home.js';
-import { session, sessionSummary } from './views/session.js';
+import { session, sessionSummary, editSession } from './views/session.js';
 import { exercises } from './views/exercises.js';
+import { exerciseHistory } from './views/exercise-history.js';
 import { groups } from './views/groups.js';
 import { reports } from './views/reports.js';
+import { goals } from './views/goals.js';
 import { calendar } from './views/calendar.js';
 import { weight } from './views/weight.js';
 import { calculator } from './views/calculator.js';
@@ -60,9 +62,12 @@ function syncTabbar() {
 route('/', (ctx) => renderView(home, ctx));
 route('/session/:id', (ctx) => renderView(session, ctx));
 route('/session/:id/summary', (ctx) => renderView(sessionSummary, ctx));
+route('/session/:id/edit', (ctx) => renderView(editSession, ctx));
 route('/exercises', (ctx) => renderView(exercises, ctx));
+route('/exercise/:id/history', (ctx) => renderView(exerciseHistory, ctx));
 route('/groups', (ctx) => renderView(groups, ctx));
 route('/reports', (ctx) => renderView(reports, ctx));
+route('/goals', (ctx) => renderView(goals, ctx));
 route('/calendar', (ctx) => renderView(calendar, ctx));
 route('/weight', (ctx) => renderView(weight, ctx));
 route('/calculator', (ctx) => renderView(calculator, ctx));
@@ -81,11 +86,30 @@ backBtn.onclick = () => {
 };
 
 /* ---------------- Service Worker ---------------- */
+let _swRefreshing = false;
 function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   // Ruta relativa para funcionar bajo subdirectorios (GitHub Pages).
   const swUrl = new URL('./service-worker.js', window.location.href);
-  navigator.serviceWorker.register(swUrl.pathname).catch((e) => console.warn('SW no registrado', e));
+
+  // Cuando un SW nuevo toma el control, recarga una vez para que la página
+  // use los recursos recién cacheados (evita quedarse en la versión vieja tras
+  // desplegar). En la primera instalación no había SW antes → no recargamos.
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || _swRefreshing) return;
+    _swRefreshing = true;
+    window.location.reload();
+  });
+
+  navigator.serviceWorker.register(swUrl.pathname).then((reg) => {
+    // Comprueba si hay versión nueva al arrancar y cada vez que la app vuelve
+    // a primer plano (reabrir la PWA en el móvil dispara la comprobación).
+    reg.update();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update();
+    });
+  }).catch((e) => console.warn('SW no registrado', e));
 }
 
 /* ---------------- Arranque ---------------- */

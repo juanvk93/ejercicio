@@ -4,13 +4,15 @@
    ============================================================ */
 
 const DB_NAME = 'gym-tracker';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const STORES = {
-  EXERCISES: 'exercises',   // ejercicios genéricos
-  GROUPS: 'groups',         // grupos de ejercicios
-  SESSIONS: 'sessions',     // sesiones de entrenamiento
-  BODYWEIGHT: 'bodyweight', // registros de peso corporal
+  EXERCISES: 'exercises',       // ejercicios genéricos
+  GROUPS: 'groups',             // grupos de ejercicios
+  SESSIONS: 'sessions',         // sesiones de entrenamiento
+  BODYWEIGHT: 'bodyweight',     // registros de peso corporal
+  MEASUREMENTS: 'measurements', // medidas corporales (cintura, brazo…)
+  GOALS: 'goals',               // objetivos por ejercicio
 };
 
 let _dbPromise = null;
@@ -39,6 +41,14 @@ export function openDB() {
       if (!db.objectStoreNames.contains(STORES.BODYWEIGHT)) {
         const s = db.createObjectStore(STORES.BODYWEIGHT, { keyPath: 'id' });
         s.createIndex('date', 'date', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORES.MEASUREMENTS)) {
+        const s = db.createObjectStore(STORES.MEASUREMENTS, { keyPath: 'id' });
+        s.createIndex('date', 'date', { unique: false });
+        s.createIndex('type', 'type', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORES.GOALS)) {
+        db.createObjectStore(STORES.GOALS, { keyPath: 'id' });
       }
     };
 
@@ -94,19 +104,21 @@ export function getSessionsByStatus(status) {
 
 /** Exporta toda la base de datos como objeto plano (para backup). */
 export async function exportAll() {
-  const [exercises, groups, sessions, bodyweight] = await Promise.all([
+  const [exercises, groups, sessions, bodyweight, measurements, goals] = await Promise.all([
     getAll(STORES.EXERCISES),
     getAll(STORES.GROUPS),
     getAll(STORES.SESSIONS),
     getAll(STORES.BODYWEIGHT),
+    getAll(STORES.MEASUREMENTS),
+    getAll(STORES.GOALS),
   ]);
-  return { version: DB_VERSION, exportedAt: new Date().toISOString(), exercises, groups, sessions, bodyweight };
+  return { version: DB_VERSION, exportedAt: new Date().toISOString(), exercises, groups, sessions, bodyweight, measurements, goals };
 }
 
 /** Importa un backup (reemplaza el contenido actual). */
 export async function importAll(data) {
   const db = await openDB();
-  const names = [STORES.EXERCISES, STORES.GROUPS, STORES.SESSIONS, STORES.BODYWEIGHT];
+  const names = [STORES.EXERCISES, STORES.GROUPS, STORES.SESSIONS, STORES.BODYWEIGHT, STORES.MEASUREMENTS, STORES.GOALS];
   return new Promise((resolve, reject) => {
     const t = db.transaction(names, 'readwrite');
     t.oncomplete = () => resolve(true);
@@ -120,6 +132,8 @@ export async function importAll(data) {
       [STORES.GROUPS]: arr(data.groups),
       [STORES.SESSIONS]: arr(data.sessions),
       [STORES.BODYWEIGHT]: arr(data.bodyweight),
+      [STORES.MEASUREMENTS]: arr(data.measurements),
+      [STORES.GOALS]: arr(data.goals),
     };
     names.forEach((name) => {
       const store = t.objectStore(name);

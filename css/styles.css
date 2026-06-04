@@ -76,6 +76,9 @@ button { font-family: inherit; cursor: pointer; }
 input, select, textarea, button { font-family: inherit; font-size: 16px; }
 a { color: inherit; text-decoration: none; }
 ::selection { background: var(--primary-soft); }
+/* `[hidden]` debe ocultar de verdad: las clases con display:flex/grid (.rest-bar,
+   .chip-grid…) lo anularían si no. Se exceptúa .icon-btn, que conserva su hueco. */
+[hidden]:not(.icon-btn) { display: none !important; }
 
 /* ---------- Layout principal ---------- */
 #app { display: flex; flex-direction: column; min-height: 100%; }
@@ -319,6 +322,11 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary)
 }
 .set-done-btn.done { background: var(--success); border-color: var(--success); color: #fff; }
 .set-row.done td .input-inline { opacity: 0.7; }
+.sets-table .set-rpe { width: 52px; }
+.sets-table .set-rpe .input-inline { padding: 10px 2px; }
+
+/* Ejercicio enlazado en superserie con el siguiente */
+.card.superset-linked { border-left: 3px solid var(--primary); }
 
 /* ---------- Lista de items con acciones ---------- */
 .item {
@@ -367,6 +375,29 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary)
 .pr-item:first-child { padding-top: 0; }
 .pr-item:last-of-type { border-bottom: none; padding-bottom: 0; }
 .pr-item b { color: var(--text); font-weight: 700; }
+
+/* ---------- Barra del temporizador de descanso ---------- */
+.rest-bar {
+  position: fixed; left: 0; right: 0;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  z-index: 25;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 10px 14px;
+  background: var(--primary); color: #fff;
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.28);
+}
+.rest-time {
+  font-size: 24px; font-weight: 800; min-width: 70px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.rest-btn {
+  border: none; background: rgba(255, 255, 255, 0.18); color: #fff;
+  font-weight: 800; font-size: 14px; border-radius: 999px;
+  min-width: 46px; height: 40px; padding: 0 12px; cursor: pointer;
+  transition: background var(--transition);
+}
+.rest-btn:active { background: rgba(255, 255, 255, 0.34); }
+.rest-btn[data-act="toggle"], .rest-skip { font-size: 16px; }
 
 /* ---------- Calendario ---------- */
 .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }

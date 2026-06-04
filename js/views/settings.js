@@ -36,9 +36,11 @@ export async function settings() {
     '<path d="M6.5 6.5l11 11M3 9l3-3 4 4-3 3zM21 15l-3 3-4-4 3-3z"/>'));
   list.appendChild(navItem('Grupos de ejercicios', 'Agrupa ejercicios por día o zona', '#/groups',
     '<rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/>'));
-  list.appendChild(navItem('Registrar peso', 'Controla tu peso corporal', '#/weight',
+  list.appendChild(navItem('Objetivos', 'Marca metas y sigue su progreso', '#/goals',
+    '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>'));
+  list.appendChild(navItem('Peso y medidas', 'Peso corporal, cintura, brazo…', '#/weight',
     '<path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 3v9l5-3"/>'));
-  list.appendChild(navItem('Calculadora lb ⇄ kg', 'Convierte libras a kilos', '#/calculator',
+  list.appendChild(navItem('Calculadora', 'Conversión lb⇄kg y discos por lado', '#/calculator',
     '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h2M14 10h2M8 14h2M14 14h2M8 18h2M14 18h2"/>'));
   node.appendChild(list);
 
@@ -158,10 +160,11 @@ export async function settings() {
   };
 
   dataCard.querySelector('#reset').onclick = async () => {
-    if (!await confirmDialog('Esto borrará ejercicios, grupos, sesiones y pesos. ¿Seguro?', { okText: 'Borrar todo' })) return;
+    if (!await confirmDialog('Esto borrará ejercicios, grupos, sesiones, pesos, medidas y objetivos. ¿Seguro?', { okText: 'Borrar todo' })) return;
     await Promise.all([
       db.clear(db.STORES.EXERCISES), db.clear(db.STORES.GROUPS),
       db.clear(db.STORES.SESSIONS), db.clear(db.STORES.BODYWEIGHT),
+      db.clear(db.STORES.MEASUREMENTS), db.clear(db.STORES.GOALS),
     ]);
     toast('Datos borrados', 'success');
     navigate('#/');

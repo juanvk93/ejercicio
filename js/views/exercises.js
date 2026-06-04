@@ -33,6 +33,12 @@ export async function exercises() {
   // Limpia del filtro etiquetas que ya no existan.
   for (const t of [...activeFilter]) if (!tags.includes(t)) activeFilter.delete(t);
 
+  // Buscador por nombre.
+  let term = '';
+  const search = el('<input class="input mt mb" type="search" placeholder="Buscar ejercicio…" autocomplete="off">');
+  search.oninput = () => { term = search.value.trim().toLowerCase(); renderList(); };
+  node.appendChild(search);
+
   // Barra de filtro por etiqueta.
   if (tags.length) {
     node.appendChild(el('<div class="section-title">Filtrar por etiqueta</div>'));
@@ -62,9 +68,10 @@ export async function exercises() {
   function renderList() {
     wrap.innerHTML = '';
     // OR: muestra ejercicios que tengan ALGUNA de las etiquetas seleccionadas.
-    const filtered = activeFilter.size === 0
+    let filtered = activeFilter.size === 0
       ? list
       : list.filter((ex) => store.exerciseTags(ex).some((t) => activeFilter.has(t)));
+    if (term) filtered = filtered.filter((ex) => ex.name.toLowerCase().includes(term));
 
     if (!filtered.length) {
       wrap.appendChild(el('<div class="empty"><p>Ningún ejercicio con ese filtro.</p></div>'));
@@ -83,6 +90,9 @@ export async function exercises() {
             ${(tagChips || uniBadge) ? `<div class="row wrap" style="gap:6px;margin-top:7px">${tagChips}${uniBadge}</div>` : ''}
           </div>
           <div class="item-actions">
+            <button class="icon-btn" data-act="history" aria-label="Ver historial">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+            </button>
             <button class="icon-btn" data-act="edit" aria-label="Editar">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
             </button>
@@ -91,6 +101,7 @@ export async function exercises() {
             </button>
           </div>
         </div>`);
+      item.querySelector('[data-act="history"]').onclick = () => navigate(`#/exercise/${ex.id}/history`);
       item.querySelector('[data-act="edit"]').onclick = () => openForm(ex);
       item.querySelector('[data-act="del"]').onclick = async () => {
         if (await confirmDialog(`¿Eliminar "${ex.name}"? Se quitará de los grupos que lo usen.`)) {
