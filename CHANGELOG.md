@@ -26,6 +26,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 - **Objetivos / metas:** nueva sección (Ajustes → Objetivos, `#/goals`) para fijar metas por
   ejercicio (peso máximo o 1RM estimado) con barra de progreso calculada a partir de los
   récords personales y aviso "¡Logrado!". Nuevo almacén `goals`. (`js/views/goals.js`, `js/store.js`)
+- **Objetivos — aviso en vivo al cumplirlos:** durante la sesión, al completar una serie que
+  alcanza un objetivo aún no logrado, salta un toast "🎯 ¡Objetivo cumplido!" (junto a la
+  detección de récord). (`js/views/session.js`)
+- **Objetivos — separados por estado:** la pantalla de Objetivos divide en "En progreso" y
+  "Logrados (N)". (`js/views/goals.js`)
+- **Objetivos — resumen en Inicio:** tarjeta "X de N logrados · Y en progreso" que enlaza a
+  Objetivos. (`js/views/home.js`)
 - **Notas de sesión:** campo de texto libre en la sesión activa (y al editar); se muestra en
   el resumen. (`js/views/session.js`)
 - **Buscador de ejercicios por nombre** en el configurador de ejercicios. (`js/views/exercises.js`)
@@ -104,5 +111,5 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
   incluyen. (`js/db.js`, `js/views/settings.js`)
 - **Buscador de ejercicios separado del botón "+ Nuevo ejercicio"** con un margen superior.
   (`js/views/exercises.js`)
-- Caché del Service Worker subida a `gym-tracker-v28` (incluye `exercise-history.js` y
+- Caché del Service Worker subida a `gym-tracker-v29` (incluye `exercise-history.js` y
   `goals.js` en el app-shell) para invalidar la versión anterior. (`service-worker.js`)

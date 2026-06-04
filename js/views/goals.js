@@ -33,8 +33,7 @@ export async function goals() {
     return { title: 'Objetivos', back: '#/settings', node };
   }
 
-  const list = el('<div class="mt"></div>');
-  for (const g of progress) {
+  function goalCard(g) {
     const card = el('<div class="card" style="margin-bottom:12px"></div>');
     card.appendChild(el(`
       <div class="row between" style="margin-bottom:6px">
@@ -61,9 +60,24 @@ export async function goals() {
         navigate('#/goals');
       }
     };
-    list.appendChild(card);
+    return card;
   }
-  node.appendChild(list);
+
+  const inProgress = progress.filter((g) => !g.achieved);
+  const achieved = progress.filter((g) => g.achieved);
+
+  if (inProgress.length) {
+    node.appendChild(el('<div class="section-title">En progreso</div>'));
+    const wrap = el('<div></div>');
+    inProgress.forEach((g) => wrap.appendChild(goalCard(g)));
+    node.appendChild(wrap);
+  }
+  if (achieved.length) {
+    node.appendChild(el(`<div class="section-title">Logrados (${achieved.length})</div>`));
+    const wrap = el('<div></div>');
+    achieved.forEach((g) => wrap.appendChild(goalCard(g)));
+    node.appendChild(wrap);
+  }
 
   return { title: 'Objetivos', back: '#/settings', node };
 }

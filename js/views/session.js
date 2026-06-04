@@ -26,13 +26,21 @@ export async function session(ctx) {
     prMap.set(r.exerciseId, { topWeight: r.topWeight.weight, best1RM: r.best1RM.value });
   }
 
+  // Objetivos por ejercicio, con su estado PREVIO a esta sesión (para avisar solo al cruzarlo).
+  const goalMap = new Map(); // exerciseId -> [{ metric, target, name, done }]
+  for (const g of await store.goalProgress()) {
+    if (!goalMap.has(g.exerciseId)) goalMap.set(g.exerciseId, []);
+    goalMap.get(g.exerciseId).push({ metric: g.metric, target: g.target, name: g.name, done: g.achieved });
+  }
+
   // Barra de temporizador de descanso (solo si se activó al crear la sesión).
   const restBar = s.restTimer && s.restTimer.enabled ? createRestBar(s.restTimer.seconds || 90) : null;
 
-  // Contexto compartido con las filas de series (PR en vivo + arranque del descanso).
+  // Contexto compartido con las filas de series (PR/objetivo en vivo + arranque del descanso).
   const sctx = {
     onSetDone(ex, set) {
       celebratePR(ex, set, prMap);
+      celebrateGoals(ex, set, goalMap);
       if (restBar) restBar.start();
     },
   };
@@ -179,6 +187,27 @@ function celebratePR(ex, set, prMap) {
   if (rm > pr.best1RM) {
     if (!shown) toast(`🏆 ¡Récord de 1RM est. en ${ex.name}! ${fmtNum(rm)} ${u}`, 'success');
     pr.best1RM = rm;
+  }
+}
+
+/**
+ * Avisa si la serie completada alcanza un objetivo del ejercicio que aún no
+ * estaba cumplido. Marca el objetivo como cumplido para no repetir el aviso.
+ */
+function celebrateGoals(ex, set, goalMap) {
+  const goals = goalMap.get(ex.exerciseId);
+  if (!goals) return;
+  const w = num(set.weight), r = num(set.reps);
+  if (w <= 0 || r <= 0) return;
+  const rm = store.epley1RM(w, r);
+  const u = unitLabel();
+  for (const g of goals) {
+    if (g.done) continue;
+    const val = g.metric === 'est1RM' ? rm : w;
+    if (val >= g.target) {
+      g.done = true;
+      toast(`🎯 ¡Objetivo cumplido: ${ex.name} ${fmtNum(g.target)} ${u}!`, 'success');
+    }
   }
 }
 

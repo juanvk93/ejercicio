@@ -18,6 +18,7 @@ export async function home() {
   const sessions = await store.listSessions();
   const finished = sessions.filter((s) => s.status === 'finished').slice(0, 8);
   const groups = await store.listGroups();
+  const goalsProgress = await store.goalProgress();
 
   // CTA principal: si hay sesión activa, invita a continuarla (no deja iniciar otra).
   const cta = active
@@ -60,6 +61,26 @@ export async function home() {
         <div class="stat"><div class="val">${fmtNum(w.volume)}<span class="unit"> ${esc(unitLabel())}</span></div><div class="lbl">Volumen</div></div>
         <div class="stat"><div class="val">${fmtDuration(w.durationMs)}</div><div class="lbl">Tiempo</div></div>
       </div>`));
+  }
+
+  // Resumen de objetivos (si hay alguno)
+  if (goalsProgress.length) {
+    const achieved = goalsProgress.filter((g) => g.achieved).length;
+    const total = goalsProgress.length;
+    node.appendChild(el('<div class="section-title">Objetivos</div>'));
+    const card = el(`
+      <div class="card clickable">
+        <div class="row" style="gap:14px">
+          <span class="av av-lg"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>
+          <div class="grow">
+            <div class="title" style="font-weight:800;font-size:18px">${achieved} de ${total} logrado${total === 1 ? '' : 's'}</div>
+            <div class="sub muted">${total - achieved} en progreso</div>
+          </div>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--primary)" stroke-width="2.4" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+      </div>`);
+    card.onclick = () => navigate('#/goals');
+    node.appendChild(card);
   }
 
   // Recientes
