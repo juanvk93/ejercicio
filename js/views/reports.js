@@ -9,13 +9,37 @@ import { el, esc, fmtNum, fmtDateShort, fmtDuration, lineChart, barChart } from 
 import { unitLabel } from '../prefs.js';
 import * as store from '../store.js';
 
-/** Periodos del filtro global. `days: null` = todo el histórico. */
+/** Periodos del filtro global (toggle horizontal). `all` = todo el histórico. */
 const PERIODS = [
-  { key: '4w', label: '4 semanas', days: 28 },
-  { key: '3m', label: '3 meses', days: 91 },
-  { key: '1y', label: '1 año', days: 365 },
-  { key: 'all', label: 'Todo', days: null },
+  { key: 'all', label: 'Todo' },
+  { key: '1a', label: '1A' },
+  { key: 'ytd', label: 'YTD' },
+  { key: '6m', label: '6M' },
+  { key: '3m', label: '3M' },
+  { key: '1m', label: '1M' },
+  { key: '2s', label: '2S' },
 ];
+
+/**
+ * Timestamp (ms) de inicio del periodo, u `null` para "todo".
+ * YTD = 1 de enero del año en curso; el resto se calcula con aritmética de
+ * fechas reales (no días fijos) para respetar meses de distinta duración.
+ */
+function periodSince(key) {
+  if (key === 'all') return null;
+  const now = new Date();
+  if (key === 'ytd') return new Date(now.getFullYear(), 0, 1).getTime();
+  const d = new Date(now);
+  switch (key) {
+    case '1a': d.setFullYear(d.getFullYear() - 1); break;
+    case '6m': d.setMonth(d.getMonth() - 6); break;
+    case '3m': d.setMonth(d.getMonth() - 3); break;
+    case '1m': d.setMonth(d.getMonth() - 1); break;
+    case '2s': d.setDate(d.getDate() - 14); break;
+    default: return null;
+  }
+  return d.getTime();
+}
 
 const PR_VISIBLE = 8; // récords mostrados antes del botón "Ver todos"
 
@@ -38,19 +62,21 @@ export async function reports() {
   let period = 'all';
   let currentExerciseId = '';
   let currentMetric = 'topWeight';
+  let prTag = ''; // filtro de etiqueta en récords personales ('' = todos)
 
   const exercises = await store.listExercises();
   const prs = await store.personalRecords(); // siempre sobre todo el histórico
+  const tags = await store.allTags();
 
-  // ---- Filtro de periodo
-  const chips = el(`<div class="chip-grid mb">${PERIODS.map((p) =>
-    `<button class="chip${p.key === period ? ' selected' : ''}" data-period="${p.key}">${esc(p.label)}</button>`).join('')}</div>`);
-  node.appendChild(chips);
-  chips.querySelectorAll('[data-period]').forEach((b) => {
+  // ---- Filtro de periodo (toggle horizontal)
+  const toggle = el(`<div class="period-toggle mb">${PERIODS.map((p) =>
+    `<button class="${p.key === period ? 'active' : ''}" data-period="${p.key}">${esc(p.label)}</button>`).join('')}</div>`);
+  node.appendChild(toggle);
+  toggle.querySelectorAll('[data-period]').forEach((b) => {
     b.onclick = () => {
       if (b.dataset.period === period) return;
       period = b.dataset.period;
-      chips.querySelectorAll('[data-period]').forEach((x) => x.classList.toggle('selected', x === b));
+      toggle.querySelectorAll('[data-period]').forEach((x) => x.classList.toggle('active', x === b));
       render();
     };
   });
@@ -59,8 +85,7 @@ export async function reports() {
   node.appendChild(content);
 
   async function render() {
-    const days = PERIODS.find((p) => p.key === period).days;
-    const since = days ? Date.now() - days * 24 * 3600 * 1000 : null;
+    const since = periodSince(period);
     const u = unitLabel();
 
     const [g, freq, dur, byTag] = await Promise.all([
@@ -155,15 +180,37 @@ export async function reports() {
             <span>1RM est. <b>${fmtNum(r.best1RM.value)} ${esc(u)}</b></span>
           </div>
         </div>`);
-      for (const r of prs.slice(0, PR_VISIBLE)) card.appendChild(prRow(r));
-      if (prs.length > PR_VISIBLE) {
-        const more = el(`<button class="btn ghost mt" style="width:100%">Ver todos (${prs.length})</button>`);
-        more.onclick = () => {
-          for (const r of prs.slice(PR_VISIBLE)) card.insertBefore(prRow(r), more);
-          more.remove();
-        };
-        card.appendChild(more);
+
+      // Filtro por etiqueta (grupo muscular)
+      if (tags.length) {
+        const sel = el('<select class="input mb"></select>');
+        sel.appendChild(el('<option value="">Todos los grupos</option>'));
+        for (const t of tags) sel.appendChild(el(`<option value="${esc(t)}"${t === prTag ? ' selected' : ''}>${esc(t)}</option>`));
+        sel.onchange = () => { prTag = sel.value; fillPRs(); };
+        card.appendChild(sel);
       }
+
+      const list = el('<div></div>');
+      card.appendChild(list);
+
+      function fillPRs() {
+        list.innerHTML = '';
+        const filtered = prTag ? prs.filter((r) => (r.tags || []).includes(prTag)) : prs;
+        if (!filtered.length) {
+          list.appendChild(el('<div class="empty"><p>Sin récords para este grupo.</p></div>'));
+          return;
+        }
+        for (const r of filtered.slice(0, PR_VISIBLE)) list.appendChild(prRow(r));
+        if (filtered.length > PR_VISIBLE) {
+          const more = el(`<button class="btn ghost mt" style="width:100%">Ver todos (${filtered.length})</button>`);
+          more.onclick = () => {
+            for (const r of filtered.slice(PR_VISIBLE)) list.insertBefore(prRow(r), more);
+            more.remove();
+          };
+          list.appendChild(more);
+        }
+      }
+      fillPRs();
       content.appendChild(card);
     }
 

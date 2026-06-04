@@ -6,11 +6,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 ## [Sin publicar]
 
 ### Añadido
-- **Informes — filtro de periodo:** chips «4 semanas / 3 meses / 1 año / Todo» que
-  filtran todas las estadísticas y gráficas de la pantalla (resumen, volumen,
-  frecuencia, duración, grupo muscular y progreso por ejercicio). Los récords
-  personales son la excepción: siempre se calculan sobre todo el histórico.
+- **Informes — filtro de periodo:** toggle horizontal «Todo · 1A · YTD · 6M · 3M ·
+  1M · 2S» que filtra todas las estadísticas y gráficas de la pantalla (resumen,
+  volumen, frecuencia, duración, grupo muscular y progreso por ejercicio). YTD parte
+  del 1 de enero del año en curso; meses y años se calculan con fechas reales. Los
+  récords personales son la excepción: siempre sobre todo el histórico.
   (`js/views/reports.js`, `js/store.js`)
+- **Informes — filtrar récords por grupo muscular:** selector de etiqueta en la
+  sección de récords personales (`store.personalRecords` ahora incluye las `tags`
+  del ejercicio). (`js/views/reports.js`, `js/store.js`)
 - **Informes — frecuencia y constancia:** racha actual y mejor racha de semanas
   consecutivas entrenadas (lunes a domingo, hora local; la semana en curso sin
   sesión aún no rompe la racha), media de sesiones/semana y gráfica de barras de
@@ -45,5 +49,5 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
   en el DOM sin escapar. Ahora se escapa con `esc()`. (`js/app.js`)
 
 ### Cambiado
-- Caché del Service Worker subida a `gym-tracker-v22` para invalidar la versión anterior
+- Caché del Service Worker subida a `gym-tracker-v23` para invalidar la versión anterior
   tras estos cambios. (`service-worker.js`)

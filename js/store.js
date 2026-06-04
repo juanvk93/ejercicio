@@ -407,6 +407,8 @@ export async function frequencyStats({ since = null } = {}) {
  * de la primera vez que se lograron. `isRecent` marca récords de los últimos 28 días.
  */
 export async function personalRecords() {
+  const exs = await db.getAll(STORES.EXERCISES);
+  const tagMap = new Map(exs.map((e) => [e.id, exerciseTags(e)]));
   const sessions = (await finishedSessions()).reverse(); // cronológico: la fecha del récord es la primera vez
   const map = new Map(); // exerciseId -> récord
   for (const s of sessions) {
@@ -416,7 +418,7 @@ export async function personalRecords() {
         if (w <= 0 || r <= 0) continue;
         let rec = map.get(ex.exerciseId);
         if (!rec) {
-          rec = { exerciseId: ex.exerciseId, name: ex.name, topWeight: null, bestSet: null, best1RM: null };
+          rec = { exerciseId: ex.exerciseId, name: ex.name, tags: tagMap.get(ex.exerciseId) || [], topWeight: null, bestSet: null, best1RM: null };
           map.set(ex.exerciseId, rec);
         }
         rec.name = ex.name; // se queda con el nombre del snapshot más reciente
