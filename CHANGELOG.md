@@ -21,8 +21,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
   `rpeTrend`, `js/views/reports.js`)
 - **Calendario tipo heatmap:** vista de constancia de las últimas 12 semanas por intensidad de
   volumen. (`js/views/calendar.js`, `css/styles.css`)
-- **Logros / medallas:** hitos por sesiones, rachas, volumen total y récords, con progreso
-  (Ajustes → Logros, `#/achievements`). (`js/views/achievements.js`, `js/store.js` → `achievements`)
+- **Mapa de calor anual:** al final de la pestaña Calendario, matriz 12 meses × 31 días del año
+  en curso coloreada por volumen diario (con cabecera de días y etiquetas de mes). (`js/views/calendar.js`,
+  `css/styles.css`)
+- **Logros / medallas:** hitos por sesiones, rachas, volumen total y récords, con barra y
+  **progreso numérico** (valor/objetivo y %) en los pendientes (Ajustes → Logros,
+  `#/achievements`). (`js/views/achievements.js`, `js/store.js` → `achievements`)
 - **Cronómetro en vivo de la sesión:** duración actual en la cabecera de la sesión activa.
   (`js/views/session.js`, `js/utils.js` → `fmtClock`)
 - **Esquemas de series rápidos:** botón "Esquema" para rellenar 5×5, 3×10, pirámide… de un toque.
@@ -98,6 +102,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
   ahora incluye `est1RM` por sesión).
 
 ### Corregido
+- **Mapa de calor anual salía siempre vacío:** la regla base `.yh-cell` (fondo gris) estaba
+  *después* de los niveles `.hm-1…4` en la hoja de estilos y, a igual especificidad, ganaba,
+  anulando el color de las celdas con actividad. Los niveles de intensidad se mueven al final
+  del CSS para ganar en ambos heatmaps. (`css/styles.css`)
+- **Mapa de calor anual desbordaba la tarjeta por la derecha:** las columnas internas `1fr`
+  tenían un mínimo automático = `min-content` (las cabeceras de día/semana con texto exigían
+  ancho). Resuelto usando `repeat(N, minmax(0, 1fr))` en las columnas de ambas rejillas, más
+  `minmax(0,1fr)`/`min-width:0` en los contenedores. (`css/styles.css`)
+- **Heatmap del calendario rehecho:** antes quedaba descuadrado (celdas enormes a todo el
+  ancho). Ahora es una rejilla compacta y centrada (7 días × 12 semanas, celdas cuadradas)
+  con **cabecera por columna que indica la semana** (fecha del lunes, `d/m`) y etiquetas de
+  día (L · X · V · D). (`css/styles.css`, `js/views/calendar.js`)
 - **El temporizador de descanso no se cerraba (se quedaba congelado en 0:00):** la barra
   usa `display:flex`, que anulaba el atributo `hidden` (las reglas de autor ganan a la del
   navegador), así que al pulsar ✕ o al llegar a 0 se marcaba oculta pero seguía visible.
@@ -134,5 +150,5 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
   (exportar/importar) y el borrado de datos los incluyen. (`js/db.js`, `js/views/settings.js`)
 - **Buscador de ejercicios separado del botón "+ Nuevo ejercicio"** con un margen superior.
   (`js/views/exercises.js`)
-- Caché del Service Worker subida a `gym-tracker-v30` (incluye `planner.js` y `achievements.js`
+- Caché del Service Worker subida a `gym-tracker-v36` (incluye `planner.js` y `achievements.js`
   en el app-shell) para invalidar la versión anterior. (`service-worker.js`)

@@ -3,7 +3,7 @@
    Hitos de sesiones, rachas, volumen total y récords.
    ============================================================ */
 
-import { el, esc } from '../utils.js';
+import { el, esc, fmtNum } from '../utils.js';
 import * as store from '../store.js';
 
 export async function achievements() {
@@ -27,7 +27,12 @@ export async function achievements() {
           <div class="grow">
             <div class="title" style="font-weight:700">${esc(a.title)}${a.unlocked ? ' <span class="badge" style="background:var(--success);color:#fff">✓</span>' : ''}</div>
             <div class="sub muted">${esc(a.desc)}</div>
-            ${a.unlocked ? '' : `<div class="bar-track" style="height:6px;margin-top:8px"><div class="bar-fill" style="width:${Math.max(2, a.pct)}%"></div></div>`}
+            ${a.unlocked ? '' : `
+              <div class="row between muted" style="font-size:12px;margin-top:8px">
+                <span>${fmtNum(a.value)} / ${fmtNum(a.target)}</span>
+                <span>${a.pct}%</span>
+              </div>
+              <div class="bar-track" style="height:6px;margin-top:5px"><div class="bar-fill" style="width:${Math.max(2, a.pct)}%"></div></div>`}
           </div>
         </div>
       </div>`);

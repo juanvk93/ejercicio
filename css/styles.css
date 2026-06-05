@@ -371,10 +371,45 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary)
 .chart-bar { fill: var(--primary); }
 
 /* ---------- Heatmap de constancia (calendario) ---------- */
-.heatmap { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
-.heatmap::-webkit-scrollbar { display: none; }
-.hm-col { display: flex; flex-direction: column; gap: 4px; }
-.hm-cell { width: 14px; height: 14px; border-radius: 3px; background: var(--bg-elev-2); flex: 0 0 auto; }
+/* Bloque 2×2: esquina · semanas (arriba) / días (izq) · rejilla (7×12). Centrado.
+   La cabecera de semanas indica la fecha (d/m) del lunes de cada columna. */
+.heatmap {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 6px;
+  max-width: 360px;
+  margin: 0 auto;
+}
+.hm-weeks {
+  display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; min-width: 0;
+  font-size: 8px; line-height: 1; color: var(--text-faint);
+}
+.hm-weeks div { text-align: center; white-space: nowrap; }
+.hm-daylabels {
+  display: grid; grid-template-rows: repeat(7, 1fr); gap: 3px;
+  font-size: 9px; color: var(--text-faint);
+}
+.hm-daylabels div { display: flex; align-items: center; justify-content: flex-end; min-width: 12px; }
+.hm-grid {
+  display: grid; grid-auto-flow: column; min-width: 0;
+  grid-template-rows: repeat(7, 1fr); grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 3px;
+}
+.hm-cell { aspect-ratio: 1; border-radius: 2px; background: var(--bg-elev-2); }
+.hm-key { width: 13px; height: 13px; border-radius: 2px; display: inline-block; background: var(--bg-elev-2); }
+
+/* Mapa de calor anual (12 meses × 31 días) */
+.year-heatmap { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 6px; }
+.yh-days { display: grid; grid-template-columns: repeat(31, minmax(0, 1fr)); gap: 2px; min-width: 0; font-size: 8px; line-height: 1; color: var(--text-faint); }
+.yh-days div { text-align: center; white-space: nowrap; }
+.yh-months { display: grid; grid-template-rows: repeat(12, 1fr); gap: 2px; font-size: 9px; font-weight: 700; color: var(--text-faint); }
+.yh-months div { display: flex; align-items: center; justify-content: flex-end; }
+.yh-grid { display: grid; grid-template-columns: repeat(31, minmax(0, 1fr)); gap: 2px; min-width: 0; }
+.yh-cell { aspect-ratio: 1; border-radius: 2px; background: var(--bg-elev-2); }
+.yh-void { opacity: 0.25; }
+
+/* Niveles de intensidad — definidos al final para ganar a los fondos base
+   .hm-cell/.yh-cell (misma especificidad: el orden decide). */
 .hm-1 { background: color-mix(in srgb, var(--primary) 30%, var(--bg-elev-2)); }
 .hm-2 { background: color-mix(in srgb, var(--primary) 55%, var(--bg-elev-2)); }
 .hm-3 { background: color-mix(in srgb, var(--primary) 78%, var(--bg-elev-2)); }

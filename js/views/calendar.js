@@ -77,9 +77,27 @@ export async function calendar() {
   const today0 = new Date(); today0.setHours(0, 0, 0, 0);
   const startMon = new Date(today0);
   startMon.setDate(today0.getDate() - ((today0.getDay() + 6) % 7) - 11 * 7); // lunes, 12 columnas atrás
+  // Bloque 2×2: esquina + cabecera de semanas / etiquetas de día + rejilla.
   const hm = el('<div class="heatmap"></div>');
+  hm.appendChild(el('<div class="hm-corner"></div>'));
+
+  // Cabecera: fecha (d/m) del lunes de cada columna → indica a qué semana corresponde.
+  const weeks = el('<div class="hm-weeks"></div>');
   for (let c = 0; c < 12; c++) {
-    const col = el('<div class="hm-col"></div>');
+    const mon = new Date(startMon);
+    mon.setDate(startMon.getDate() + c * 7);
+    weeks.appendChild(el(`<div>${mon.getDate()}/${mon.getMonth() + 1}</div>`));
+  }
+  hm.appendChild(weeks);
+
+  // Etiquetas de día (lunes a domingo; se muestran L · X · V · D).
+  const dayLabels = el('<div class="hm-daylabels"></div>');
+  ['L', '', 'X', '', 'V', '', 'D'].forEach((lbl) => dayLabels.appendChild(el(`<div>${lbl}</div>`)));
+  hm.appendChild(dayLabels);
+
+  // Rejilla de celdas, en orden por columnas (grid-auto-flow:column).
+  const hmGrid = el('<div class="hm-grid"></div>');
+  for (let c = 0; c < 12; c++) {
     for (let r = 0; r < 7; r++) {
       const d = new Date(startMon);
       d.setDate(startMon.getDate() + c * 7 + r);
@@ -88,15 +106,15 @@ export async function calendar() {
       const vol = volByKey.get(k) || 0;
       const lvl = future ? 0 : level(vol);
       const title = `${k}${vol ? ` · ${fmtNum(vol)} ${unitLabel()} vol` : ''}`;
-      col.appendChild(el(`<div class="hm-cell hm-${lvl}" title="${esc(title)}"></div>`));
+      hmGrid.appendChild(el(`<div class="hm-cell hm-${lvl}" title="${esc(title)}"></div>`));
     }
-    hm.appendChild(col);
   }
+  hm.appendChild(hmGrid);
   hmCard.appendChild(hm);
   hmCard.appendChild(el(`
-    <div class="row" style="justify-content:flex-end;gap:5px;align-items:center;margin-top:8px;font-size:11px">
+    <div class="row" style="justify-content:center;gap:5px;align-items:center;margin-top:10px;font-size:11px">
       <span class="faint">menos</span>
-      <span class="hm-cell hm-0"></span><span class="hm-cell hm-1"></span><span class="hm-cell hm-2"></span><span class="hm-cell hm-3"></span><span class="hm-cell hm-4"></span>
+      <span class="hm-key hm-0"></span><span class="hm-key hm-1"></span><span class="hm-key hm-2"></span><span class="hm-key hm-3"></span><span class="hm-key hm-4"></span>
       <span class="faint">más</span>
     </div>`));
   node.appendChild(hmCard);
@@ -104,6 +122,42 @@ export async function calendar() {
   // Panel del día seleccionado.
   const panel = el('<div id="cal-panel"></div>');
   node.appendChild(panel);
+
+  // Mapa de calor anual (12 meses × 31 días) al final de la pestaña.
+  const year = today0.getFullYear();
+  node.appendChild(el(`<div class="section-title">Mapa de calor diario ${year}</div>`));
+  const yhCard = el('<div class="card"></div>');
+  const yh = el('<div class="year-heatmap"></div>');
+  yh.appendChild(el('<div class="yh-corner"></div>'));
+
+  // Cabecera de días (marca 1, 5, 10, 15, 20, 25, 30).
+  const dayMarks = [1, 5, 10, 15, 20, 25, 30];
+  const yhDays = el('<div class="yh-days"></div>');
+  for (let day = 1; day <= 31; day++) yhDays.appendChild(el(`<div>${dayMarks.includes(day) ? day : ''}</div>`));
+  yh.appendChild(yhDays);
+
+  // Etiquetas de mes (ENE…DIC).
+  const yhMonths = el('<div class="yh-months"></div>');
+  for (let m = 0; m < 12; m++) yhMonths.appendChild(el(`<div>${esc(MONTHS[m].slice(0, 3).toUpperCase())}</div>`));
+  yh.appendChild(yhMonths);
+
+  // Rejilla: por mes (fila) y día (columna). Días inexistentes del mes → celda atenuada.
+  const yhGrid = el('<div class="yh-grid"></div>');
+  for (let m = 0; m < 12; m++) {
+    const daysInMonth = new Date(year, m + 1, 0).getDate();
+    for (let day = 1; day <= 31; day++) {
+      if (day > daysInMonth) { yhGrid.appendChild(el('<div class="yh-cell yh-void"></div>')); continue; }
+      const k = keyOf(year, m, day);
+      const future = new Date(year, m, day).getTime() > today0.getTime();
+      const vol = volByKey.get(k) || 0;
+      const lvl = future ? 0 : level(vol);
+      const title = `${k}${vol ? ` · ${fmtNum(vol)} ${unitLabel()} vol` : ''}`;
+      yhGrid.appendChild(el(`<div class="yh-cell hm-${lvl}" title="${esc(title)}"></div>`));
+    }
+  }
+  yh.appendChild(yhGrid);
+  yhCard.appendChild(yh);
+  node.appendChild(yhCard);
 
   function renderGrid() {
     header.querySelector('#cal-label').textContent = `${MONTHS[viewM]} ${viewY}`;
