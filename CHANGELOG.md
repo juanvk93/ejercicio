@@ -6,6 +6,29 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 ## [Sin publicar]
 
 ### Añadido
+- **Planificador semanal:** asigna grupos a cada día de la semana (Ajustes → Planificador,
+  `#/planner`). Inicio muestra **"Hoy toca"** con el entreno del día y un botón para empezarlo.
+  Nuevo almacén `planner`. (`js/views/planner.js`, `js/views/home.js`, `js/store.js`, `js/db.js`)
+- **Sesión libre/vacía:** empezar un entreno sin grupo y añadir ejercicios sobre la marcha,
+  desde el modal de nueva sesión. (`js/views/home.js`, `js/store.js` → `buildEmptySession`)
+- **Series por grupo muscular a la semana:** en Informes, nº de series por etiqueta en los
+  últimos 7 días con zonas de referencia (bajo/óptimo/alto, ~10–20 series). (`js/views/reports.js`,
+  `js/store.js` → `weeklySetsByTag`)
+- **Equilibrio muscular:** en Informes, reparto de volumen empuje/tirón y tren superior/inferior
+  para detectar descompensaciones (clasifica las etiquetas por palabras clave). (`js/store.js` →
+  `muscleBalance`, `js/views/reports.js`)
+- **Tendencia de RPE:** en Informes, gráfica del RPE medio por sesión (fatiga). (`js/store.js` →
+  `rpeTrend`, `js/views/reports.js`)
+- **Calendario tipo heatmap:** vista de constancia de las últimas 12 semanas por intensidad de
+  volumen. (`js/views/calendar.js`, `css/styles.css`)
+- **Logros / medallas:** hitos por sesiones, rachas, volumen total y récords, con progreso
+  (Ajustes → Logros, `#/achievements`). (`js/views/achievements.js`, `js/store.js` → `achievements`)
+- **Cronómetro en vivo de la sesión:** duración actual en la cabecera de la sesión activa.
+  (`js/views/session.js`, `js/utils.js` → `fmtClock`)
+- **Esquemas de series rápidos:** botón "Esquema" para rellenar 5×5, 3×10, pirámide… de un toque.
+  (`js/views/session.js`)
+- **Calculadora de 1RM y calentamiento:** estima el 1RM (Epley), muestra tabla de % y una rampa
+  de calentamiento. (`js/views/calculator.js`)
 - **Historial por ejercicio:** desde la lista de ejercicios (icono de reloj) se abre
   `#/exercise/:id/history` con todas las sesiones finalizadas que lo incluyen, sus series
   (resaltando el peso máximo), RPE y un resumen (peso máx, mejor 1RM, volumen, series).
@@ -106,10 +129,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
   en el DOM sin escapar. Ahora se escapa con `esc()`. (`js/app.js`)
 
 ### Cambiado
-- **Esquema de IndexedDB a `DB_VERSION = 2`:** nuevos almacenes `measurements` (medidas
-  corporales) y `goals` (objetivos). El backup (exportar/importar) y el borrado de datos los
-  incluyen. (`js/db.js`, `js/views/settings.js`)
+- **Esquema de IndexedDB a `DB_VERSION = 3`:** nuevos almacenes `measurements` (medidas
+  corporales), `goals` (objetivos) y `planner` (planificación semanal). El backup
+  (exportar/importar) y el borrado de datos los incluyen. (`js/db.js`, `js/views/settings.js`)
 - **Buscador de ejercicios separado del botón "+ Nuevo ejercicio"** con un margen superior.
   (`js/views/exercises.js`)
-- Caché del Service Worker subida a `gym-tracker-v29` (incluye `exercise-history.js` y
-  `goals.js` en el app-shell) para invalidar la versión anterior. (`service-worker.js`)
+- Caché del Service Worker subida a `gym-tracker-v30` (incluye `planner.js` y `achievements.js`
+  en el app-shell) para invalidar la versión anterior. (`service-worker.js`)

@@ -36,8 +36,12 @@ export async function settings() {
     '<path d="M6.5 6.5l11 11M3 9l3-3 4 4-3 3zM21 15l-3 3-4-4 3-3z"/>'));
   list.appendChild(navItem('Grupos de ejercicios', 'Agrupa ejercicios por día o zona', '#/groups',
     '<rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/>'));
+  list.appendChild(navItem('Planificador semanal', 'Asigna grupos a cada día', '#/planner',
+    '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 14h2M12 14h2M16 14h2"/>'));
   list.appendChild(navItem('Objetivos', 'Marca metas y sigue su progreso', '#/goals',
     '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>'));
+  list.appendChild(navItem('Logros', 'Medallas por constancia y récords', '#/achievements',
+    '<circle cx="12" cy="8" r="6"/><path d="M8.2 13.3L7 22l5-3 5 3-1.2-8.7"/>'));
   list.appendChild(navItem('Peso y medidas', 'Peso corporal, cintura, brazo…', '#/weight',
     '<path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 3v9l5-3"/>'));
   list.appendChild(navItem('Calculadora', 'Conversión lb⇄kg y discos por lado', '#/calculator',
@@ -165,6 +169,7 @@ export async function settings() {
       db.clear(db.STORES.EXERCISES), db.clear(db.STORES.GROUPS),
       db.clear(db.STORES.SESSIONS), db.clear(db.STORES.BODYWEIGHT),
       db.clear(db.STORES.MEASUREMENTS), db.clear(db.STORES.GOALS),
+      db.clear(db.STORES.PLANNER),
     ]);
     toast('Datos borrados', 'success');
     navigate('#/');

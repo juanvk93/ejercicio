@@ -4,7 +4,7 @@
    ============================================================ */
 
 const DB_NAME = 'gym-tracker';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const STORES = {
   EXERCISES: 'exercises',       // ejercicios genéricos
@@ -13,6 +13,7 @@ export const STORES = {
   BODYWEIGHT: 'bodyweight',     // registros de peso corporal
   MEASUREMENTS: 'measurements', // medidas corporales (cintura, brazo…)
   GOALS: 'goals',               // objetivos por ejercicio
+  PLANNER: 'planner',           // planificación semanal (grupos por día)
 };
 
 let _dbPromise = null;
@@ -49,6 +50,9 @@ export function openDB() {
       }
       if (!db.objectStoreNames.contains(STORES.GOALS)) {
         db.createObjectStore(STORES.GOALS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORES.PLANNER)) {
+        db.createObjectStore(STORES.PLANNER, { keyPath: 'id' });
       }
     };
 
@@ -104,21 +108,22 @@ export function getSessionsByStatus(status) {
 
 /** Exporta toda la base de datos como objeto plano (para backup). */
 export async function exportAll() {
-  const [exercises, groups, sessions, bodyweight, measurements, goals] = await Promise.all([
+  const [exercises, groups, sessions, bodyweight, measurements, goals, planner] = await Promise.all([
     getAll(STORES.EXERCISES),
     getAll(STORES.GROUPS),
     getAll(STORES.SESSIONS),
     getAll(STORES.BODYWEIGHT),
     getAll(STORES.MEASUREMENTS),
     getAll(STORES.GOALS),
+    getAll(STORES.PLANNER),
   ]);
-  return { version: DB_VERSION, exportedAt: new Date().toISOString(), exercises, groups, sessions, bodyweight, measurements, goals };
+  return { version: DB_VERSION, exportedAt: new Date().toISOString(), exercises, groups, sessions, bodyweight, measurements, goals, planner };
 }
 
 /** Importa un backup (reemplaza el contenido actual). */
 export async function importAll(data) {
   const db = await openDB();
-  const names = [STORES.EXERCISES, STORES.GROUPS, STORES.SESSIONS, STORES.BODYWEIGHT, STORES.MEASUREMENTS, STORES.GOALS];
+  const names = [STORES.EXERCISES, STORES.GROUPS, STORES.SESSIONS, STORES.BODYWEIGHT, STORES.MEASUREMENTS, STORES.GOALS, STORES.PLANNER];
   return new Promise((resolve, reject) => {
     const t = db.transaction(names, 'readwrite');
     t.oncomplete = () => resolve(true);
@@ -134,6 +139,7 @@ export async function importAll(data) {
       [STORES.BODYWEIGHT]: arr(data.bodyweight),
       [STORES.MEASUREMENTS]: arr(data.measurements),
       [STORES.GOALS]: arr(data.goals),
+      [STORES.PLANNER]: arr(data.planner),
     };
     names.forEach((name) => {
       const store = t.objectStore(name);

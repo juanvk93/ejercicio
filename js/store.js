@@ -79,6 +79,31 @@ export function saveGroup({ id, name, exerciseIds = [] }) {
 }
 export function deleteGroup(id) { return db.remove(STORES.GROUPS, id); }
 
+/* ---------------- Planificación semanal ---------------- */
+const PLANNER_ID = 'week';
+/** Índice de día de la semana con lunes=0 … domingo=6 (hora local). */
+function weekdayIndex(ts) { return (new Date(ts).getDay() + 6) % 7; }
+
+/** Devuelve 7 arrays de ids de grupo (índice 0 = lunes). */
+export async function getPlanner() {
+  const rec = await db.get(STORES.PLANNER, PLANNER_ID);
+  const days = rec && Array.isArray(rec.days) ? rec.days : [];
+  return Array.from({ length: 7 }, (_, i) => (Array.isArray(days[i]) ? days[i] : []));
+}
+/** Guarda la planificación (7 arrays de ids de grupo). */
+export function savePlanner(days) {
+  const norm = Array.from({ length: 7 }, (_, i) => (Array.isArray(days[i]) ? days[i].filter(Boolean) : []));
+  return db.put(STORES.PLANNER, { id: PLANNER_ID, days: norm });
+}
+/** Grupos planificados para hoy (objetos de grupo existentes, en orden). */
+export async function todayPlannedGroups() {
+  const days = await getPlanner();
+  const ids = days[weekdayIndex(Date.now())] || [];
+  if (!ids.length) return [];
+  const byId = new Map((await listGroups()).map((g) => [g.id, g]));
+  return ids.map((id) => byId.get(id)).filter(Boolean);
+}
+
 /* ---------------- Sesiones ---------------- */
 export async function listSessions() {
   const all = await db.getAll(STORES.SESSIONS);
@@ -146,7 +171,6 @@ export async function buildSessionExercises(exerciseIds, existingIds = new Set()
 export async function buildSessionFromPast(pastSession, opts = {}) {
   const ids = (pastSession.exercises || []).map((e) => e.exerciseId).filter(Boolean);
   const exercises = await buildSessionExercises(ids);
-  const past = pastSession.restTimer || {};
   return {
     id: uid(),
     groupIds: [...(pastSession.groupIds || [])],
@@ -154,7 +178,8 @@ export async function buildSessionFromPast(pastSession, opts = {}) {
     status: 'active',
     startedAt: opts.startedAt || Date.now(),
     finishedAt: null,
-    restTimer: { enabled: !!past.enabled, seconds: Math.max(5, Math.round(num(past.seconds) || 90)) },
+    restTimer: normalizeRestTimer(pastSession.restTimer),
+    trackRpe: !!pastSession.trackRpe,
     exercises,
   };
 }
@@ -170,12 +195,6 @@ export async function buildNewSession(groups, opts = {}) {
 
   const exercises = await buildSessionExercises(exerciseIds);
 
-  // Temporizador de descanso: opcional, se decide al crear la sesión (desactivado por defecto).
-  const rt = opts.restTimer || {};
-  const restTimer = rt.enabled
-    ? { enabled: true, seconds: Math.max(5, Math.round(num(rt.seconds) || 90)) }
-    : { enabled: false, seconds: Math.max(5, Math.round(num(rt.seconds) || 90)) };
-
   return {
     id: uid(),
     groupIds: groupList.map((g) => g.id),
@@ -183,9 +202,32 @@ export async function buildNewSession(groups, opts = {}) {
     status: 'active',
     startedAt: opts.startedAt || Date.now(),
     finishedAt: null,
-    restTimer,
+    restTimer: normalizeRestTimer(opts.restTimer),
     trackRpe: !!opts.trackRpe,
     exercises,
+  };
+}
+
+/** Normaliza la configuración del temporizador de descanso (mín. 5 s, 90 por defecto). */
+function normalizeRestTimer(rt = {}) {
+  return { enabled: !!rt.enabled, seconds: Math.max(5, Math.round(num(rt.seconds) || 90)) };
+}
+
+/**
+ * Crea (sin guardar) una sesión libre/vacía: sin grupo y sin ejercicios. El usuario
+ * añade ejercicios sobre la marcha con "+ Ejercicio"/"+ Grupo".
+ */
+export function buildEmptySession(opts = {}) {
+  return {
+    id: uid(),
+    groupIds: [],
+    groupName: opts.name || 'Sesión libre',
+    status: 'active',
+    startedAt: opts.startedAt || Date.now(),
+    finishedAt: null,
+    restTimer: normalizeRestTimer(opts.restTimer),
+    trackRpe: !!opts.trackRpe,
+    exercises: [],
   };
 }
 
@@ -573,6 +615,109 @@ export async function personalRecords() {
       isRecent: [r.topWeight, r.bestSet, r.best1RM].some((x) => x && x.date >= recentSince),
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+}
+
+/** Series de trabajo por etiqueta en los últimos 7 días (clave en hipertrofia). */
+export async function weeklySetsByTag() {
+  const since = Date.now() - 7 * 24 * 3600 * 1000;
+  const exs = await db.getAll(STORES.EXERCISES);
+  const tagMap = new Map(exs.map((e) => [e.id, exerciseTags(e)]));
+  const sessions = await finishedSessions(since);
+  const agg = new Map();
+  for (const s of sessions) {
+    for (const ex of s.exercises || []) {
+      const counted = (ex.sets || []).filter((st) => num(st.reps) > 0 || num(st.weight) > 0);
+      if (!counted.length) continue;
+      const tags = tagMap.get(ex.exerciseId) || [];
+      const keys = tags.length ? tags : ['Sin etiqueta'];
+      for (const t of keys) agg.set(t, (agg.get(t) || 0) + counted.length);
+    }
+  }
+  return [...agg.entries()].map(([tag, sets]) => ({ tag, sets })).sort((a, b) => b.sets - a.sets);
+}
+
+/* Clasificación de etiquetas en categorías (sin acentos, en minúsculas). */
+const CATEGORY_KEYWORDS = {
+  push: ['pecho', 'pectoral', 'hombro', 'deltoid', 'tricep', 'press', 'fondo', 'empuj'],
+  pull: ['espalda', 'dorsal', 'bicep', 'antebrazo', 'remo', 'jalon', 'dominada', 'trapecio', 'tiron'],
+  legs: ['pierna', 'cuadricep', 'muslo', 'femoral', 'isquio', 'gluteo', 'gemelo', 'pantorrilla', 'sentadilla', 'aductor', 'abductor', 'cadera'],
+  core: ['abdomen', 'abdominal', 'core', 'lumbar', 'oblicuo', 'plancha'],
+};
+function deburr(s) { return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+function categoriesForTags(tags) {
+  const cats = new Set();
+  for (const t of tags) {
+    const d = deburr(t);
+    for (const [cat, kws] of Object.entries(CATEGORY_KEYWORDS)) {
+      if (kws.some((k) => d.includes(k))) cats.add(cat);
+    }
+  }
+  return cats;
+}
+
+/** Volumen por categoría (empuje/tirón/pierna/core/otros) para detectar descompensaciones. */
+export async function muscleBalance({ since = null } = {}) {
+  const exs = await db.getAll(STORES.EXERCISES);
+  const tagMap = new Map(exs.map((e) => [e.id, exerciseTags(e)]));
+  const sessions = await finishedSessions(since);
+  const vol = { push: 0, pull: 0, legs: 0, core: 0, other: 0 };
+  for (const s of sessions) {
+    for (const ex of s.exercises || []) {
+      const factor = ex.unilateral ? 2 : 1;
+      const counted = (ex.sets || []).filter((st) => num(st.reps) > 0 || num(st.weight) > 0);
+      if (!counted.length) continue;
+      let v = 0;
+      for (const st of counted) v += num(st.reps) * num(st.weight) * factor;
+      const cats = categoriesForTags(tagMap.get(ex.exerciseId) || []);
+      if (!cats.size) { vol.other += v; continue; }
+      for (const c of cats) vol[c] += v;
+    }
+  }
+  return {
+    push: round(vol.push, 1), pull: round(vol.pull, 1), legs: round(vol.legs, 1),
+    core: round(vol.core, 1), other: round(vol.other, 1),
+  };
+}
+
+/** Serie temporal del RPE medio por sesión (solo sesiones que lo registraron). */
+export async function rpeTrend({ since = null } = {}) {
+  const sessions = (await finishedSessions(since)).slice().sort((a, b) => a.startedAt - b.startedAt);
+  const series = [];
+  for (const s of sessions) {
+    const st = sessionStats(s);
+    if (st.avgRpe != null) series.push({ date: s.startedAt, avgRpe: st.avgRpe });
+  }
+  return series;
+}
+
+/** Catálogo de logros con su estado (desbloqueado y progreso) según los datos. */
+export async function achievements() {
+  const sessions = await finishedSessions();
+  let totalVolume = 0;
+  for (const s of sessions) totalVolume += sessionStats(s).totalVolume;
+  const freq = await frequencyStats();
+  const prCount = (await personalRecords()).length;
+  const sc = sessions.length;
+  const bs = freq.bestStreak || 0;
+
+  const catalog = [
+    { id: 's1', icon: '🏁', title: 'Primer entreno', desc: 'Completa tu primera sesión', value: sc, target: 1 },
+    { id: 's10', icon: '💪', title: 'Cogiendo el ritmo', desc: '10 sesiones completadas', value: sc, target: 10 },
+    { id: 's50', icon: '🦾', title: 'Veterano', desc: '50 sesiones completadas', value: sc, target: 50 },
+    { id: 's100', icon: '🏛️', title: 'Centenario', desc: '100 sesiones completadas', value: sc, target: 100 },
+    { id: 'st4', icon: '🔥', title: 'Un mes seguido', desc: 'Racha de 4 semanas', value: bs, target: 4 },
+    { id: 'st12', icon: '🌋', title: 'Imparable', desc: 'Racha de 12 semanas', value: bs, target: 12 },
+    { id: 'v100k', icon: '🏋️', title: '100k levantados', desc: '100.000 de volumen total', value: totalVolume, target: 100000 },
+    { id: 'v500k', icon: '⚙️', title: 'Medio millón', desc: '500.000 de volumen total', value: totalVolume, target: 500000 },
+    { id: 'v1m', icon: '🌟', title: 'Un millón', desc: '1.000.000 de volumen total', value: totalVolume, target: 1000000 },
+    { id: 'pr1', icon: '🏆', title: 'Primer récord', desc: 'Registra tu primer récord', value: prCount, target: 1 },
+    { id: 'pr10', icon: '👑', title: 'Coleccionista de PRs', desc: 'Récords en 10 ejercicios', value: prCount, target: 10 },
+  ];
+  return catalog.map((a) => ({
+    ...a,
+    unlocked: a.value >= a.target,
+    pct: a.target > 0 ? Math.min(100, Math.round((a.value / a.target) * 100)) : 0,
+  }));
 }
 
 /* ---------------- Datos de ejemplo (semilla) ---------------- */

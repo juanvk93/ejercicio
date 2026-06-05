@@ -59,6 +59,17 @@ export function timeInputValue(ts) {
   return `${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/** Cronómetro legible (M:SS o H:MM:SS) para mostrar tiempo transcurrido en vivo. */
+export function fmtClock(ms) {
+  if (!ms || ms < 0) ms = 0;
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const p = (n) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${p(m)}:${p(s)}` : `${m}:${p(s)}`;
+}
+
 /** Duración legible entre dos timestamps (ms). */
 export function fmtDuration(ms) {
   if (!ms || ms < 0) return '—';

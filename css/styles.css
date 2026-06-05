@@ -370,6 +370,19 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary)
 .chart-axis-label { fill: var(--text-faint); font-size: 10px; }
 .chart-bar { fill: var(--primary); }
 
+/* ---------- Heatmap de constancia (calendario) ---------- */
+.heatmap { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.heatmap::-webkit-scrollbar { display: none; }
+.hm-col { display: flex; flex-direction: column; gap: 4px; }
+.hm-cell { width: 14px; height: 14px; border-radius: 3px; background: var(--bg-elev-2); flex: 0 0 auto; }
+.hm-1 { background: color-mix(in srgb, var(--primary) 30%, var(--bg-elev-2)); }
+.hm-2 { background: color-mix(in srgb, var(--primary) 55%, var(--bg-elev-2)); }
+.hm-3 { background: color-mix(in srgb, var(--primary) 78%, var(--bg-elev-2)); }
+.hm-4 { background: var(--primary); }
+
+/* Logros bloqueados (atenuados) */
+.ach-locked { opacity: 0.6; }
+
 /* ---------- Récords personales (informes) ---------- */
 .pr-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
 .pr-item:first-child { padding-top: 0; }

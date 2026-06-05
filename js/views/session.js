@@ -4,7 +4,7 @@
    recordar la última vez, finalizar y ver estadísticas.
    ============================================================ */
 
-import { el, esc, num, round, fmtDate, fmtTime, fmtDuration, fmtNum, toast, confirmDialog, showModal,
+import { el, esc, num, round, fmtDate, fmtTime, fmtDuration, fmtClock, fmtNum, toast, confirmDialog, showModal,
   tsFromDateTime, dateInputValue, timeInputValue } from '../utils.js';
 import { navigate } from '../router.js';
 import { unitLabel, getUnit } from '../prefs.js';
@@ -17,6 +17,7 @@ export async function session(ctx) {
   if (s.status === 'finished') { navigate(`#/session/${s.id}/summary`); return { title: '', back: '#/', node: el('<div></div>') }; }
 
   stopRest(); // descarta un temporizador que quedara de una visita anterior
+  stopClock();
 
   const node = el('<div></div>');
 
@@ -45,7 +46,7 @@ export async function session(ctx) {
     },
   };
 
-  // Cabecera de progreso
+  // Cabecera de progreso (con cronómetro en vivo)
   const header = el(`
     <div class="card">
       <div class="row between">
@@ -53,10 +54,11 @@ export async function session(ctx) {
           <div style="font-weight:800;font-size:18px">${esc(s.groupName)}</div>
           <div class="sub muted">${fmtDate(s.startedAt)} · ${s.exercises.length} ejercicios</div>
         </div>
-        <span class="badge">En curso</span>
+        <span class="badge live" id="se-clock">0:00</span>
       </div>
     </div>`);
   node.appendChild(header);
+  startClock(header.querySelector('#se-clock'), s);
 
   // Día y hora de inicio (editables)
   const schedule = el(`
@@ -107,6 +109,7 @@ export async function session(ctx) {
   actions.querySelector('#finish-session').onclick = async () => {
     cancelAutosave(); // descarta un guardado pendiente: persistimos el estado final aquí.
     stopRest();
+    stopClock();
     s.status = 'finished';
     s.finishedAt = Date.now();
     await store.saveSession(s);
@@ -117,6 +120,7 @@ export async function session(ctx) {
     if (await confirmDialog('¿Descartar esta sesión? Se perderán los datos registrados.', { okText: 'Descartar' })) {
       cancelAutosave(); // evita que un autosave pendiente recree la sesión tras borrarla.
       stopRest();
+      stopClock();
       await store.deleteSession(s.id);
       toast('Sesión descartada');
       navigate('#/');
@@ -139,6 +143,19 @@ function autosave(s) {
 }
 /** Cancela un autosave pendiente (evita re-escribir una sesión ya borrada/finalizada). */
 function cancelAutosave() { clearTimeout(_saveTimer); }
+
+/* ---------------- Cronómetro en vivo de la sesión ---------------- */
+let _clockInt = null;
+function stopClock() { if (_clockInt) { clearInterval(_clockInt); _clockInt = null; } }
+function startClock(elc, s) {
+  stopClock();
+  const paint = () => {
+    if (!document.body.contains(elc)) { stopClock(); return; } // se cambió de vista
+    elc.textContent = fmtClock(Date.now() - s.startedAt);
+  };
+  paint();
+  _clockInt = setInterval(paint, 1000);
+}
 
 /** Tarjeta de notas de la sesión (texto libre con autosave). */
 function renderNotesCard(s) {
@@ -475,15 +492,55 @@ function renderExercise(s, ex, exIdx, sctx) {
   renderRows();
   card.appendChild(table);
 
-  const addBtn = el(`<button class="btn ghost block mt" style="padding:10px">+ Añadir serie</button>`);
-  addBtn.onclick = () => {
+  const addRow = el(`
+    <div class="btn-row mt">
+      <button class="btn ghost" id="add-set" style="padding:10px">+ Añadir serie</button>
+      <button class="btn ghost" id="scheme" style="padding:10px">Esquema</button>
+    </div>`);
+  addRow.querySelector('#add-set').onclick = () => {
     const last = ex.sets[ex.sets.length - 1];
     ex.sets.push({ reps: last ? last.reps : 0, weight: last ? last.weight : 0, done: false });
     renderRows();
     autosave(s);
   };
-  card.appendChild(addBtn);
+  addRow.querySelector('#scheme').onclick = () => openSchemeModal(s, ex, renderRows);
+  card.appendChild(addRow);
   return card;
+}
+
+/* Esquemas de series rápidos. `reps` numérico + `sets`, o array de reps (pirámide). */
+const SET_SCHEMES = [
+  { label: '5 × 5', sets: 5, reps: 5 },
+  { label: '3 × 8', sets: 3, reps: 8 },
+  { label: '3 × 10', sets: 3, reps: 10 },
+  { label: '3 × 12', sets: 3, reps: 12 },
+  { label: '4 × 6', sets: 4, reps: 6 },
+  { label: 'Pirámide 12-10-8', reps: [12, 10, 8] },
+  { label: 'Pirámide 15-12-10-8', reps: [15, 12, 10, 8] },
+];
+
+/** Modal para reemplazar las series del ejercicio por un esquema predefinido. */
+function openSchemeModal(s, ex, renderRows) {
+  const baseWeight = num((ex.sets[0] || {}).weight) || 0;
+  const logged = (ex.sets || []).some((st) => num(st.reps) > 0 || num(st.weight) > 0);
+
+  const content = el('<div><p class="muted" style="margin-top:0">Rellena las series de un toque. Se mantiene el peso de la primera serie.</p><div class="chip-grid" id="schemes"></div></div>');
+  const host = content.querySelector('#schemes');
+  const { close } = showModal('Esquema de series', content);
+
+  for (const sch of SET_SCHEMES) {
+    const chip = el(`<button class="chip" type="button">${esc(sch.label)}</button>`);
+    chip.onclick = async () => {
+      close();
+      if (logged && !(await confirmDialog('Esto reemplazará las series actuales de este ejercicio. ¿Continuar?', { okText: 'Reemplazar', danger: false }))) return;
+      const repsArr = Array.isArray(sch.reps) ? sch.reps.slice() : Array.from({ length: sch.sets }, () => sch.reps);
+      ex.sets = repsArr.map((r) => ({ reps: r, weight: baseWeight, done: false }));
+      renderRows();
+      autosave(s);
+      toast('Esquema aplicado', 'success');
+    };
+    host.appendChild(chip);
+  }
 }
 
 function renderSetRow(s, ex, set, i, renderRows, sctx) {

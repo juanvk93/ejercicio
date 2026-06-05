@@ -88,11 +88,14 @@ export async function reports() {
     const since = periodSince(period);
     const u = unitLabel();
 
-    const [g, freq, dur, byTag] = await Promise.all([
+    const [g, freq, dur, byTag, weeklySets, balance, rpe] = await Promise.all([
       store.globalStats({ since }),
       store.frequencyStats({ since }),
       store.durationStats({ since }),
       store.volumeByTag({ since }),
+      store.weeklySetsByTag(),
+      store.muscleBalance({ since }),
+      store.rpeTrend({ since }),
     ]);
 
     content.innerHTML = '';
@@ -140,6 +143,13 @@ export async function reports() {
         content.appendChild(el(`<div class="card mt">${lineChart(durPoints, { unit: 'min' })}<div class="faint center" style="font-size:12px;margin-top:6px">Minutos por sesión</div></div>`));
       }
 
+      // ---- Tendencia de RPE (fatiga)
+      if (rpe.length >= 2) {
+        content.appendChild(el('<div class="section-title">Tendencia de RPE</div>'));
+        const rpePoints = rpe.map((d) => ({ x: fmtDateShort(d.date), y: d.avgRpe }));
+        content.appendChild(el(`<div class="card">${lineChart(rpePoints, { unit: '' })}<div class="faint center" style="font-size:12px;margin-top:6px">RPE medio por sesión</div></div>`));
+      }
+
       // ---- Volumen por grupo muscular (etiqueta)
       content.appendChild(el('<div class="section-title">Volumen por grupo muscular</div>'));
       if (!byTag.length) {
@@ -157,6 +167,58 @@ export async function reports() {
               </div>
               <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
             </div>`));
+        }
+        content.appendChild(card);
+      }
+
+      // ---- Series por grupo muscular (últimos 7 días) — clave en hipertrofia
+      content.appendChild(el('<div class="section-title">Series por grupo · últimos 7 días</div>'));
+      if (!weeklySets.length) {
+        content.appendChild(el('<div class="card"><div class="empty"><p>Sin series en los últimos 7 días.</p></div></div>'));
+      } else {
+        const maxSets = Math.max(...weeklySets.map((t) => t.sets), 20);
+        const card = el('<div class="card"></div>');
+        for (const t of weeklySets) {
+          const zone = t.sets < 10 ? { c: 'var(--warning)', l: 'bajo' }
+            : (t.sets <= 20 ? { c: 'var(--success)', l: 'óptimo' } : { c: 'var(--primary)', l: 'alto' });
+          const pct = Math.max(3, Math.round((t.sets / maxSets) * 100));
+          card.appendChild(el(`
+            <div style="margin-bottom:12px">
+              <div class="row between" style="font-size:13px;margin-bottom:5px">
+                <span style="font-weight:700">${esc(t.tag)}</span>
+                <span class="muted">${t.sets} series · <span style="color:${zone.c}">${zone.l}</span></span>
+              </div>
+              <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${zone.c}"></div></div>
+            </div>`));
+        }
+        card.appendChild(el('<div class="faint" style="font-size:12px;margin-top:4px">Referencia hipertrofia: ~10–20 series por grupo y semana.</div>'));
+        content.appendChild(card);
+      }
+
+      // ---- Equilibrio muscular (empuje/tirón y superior/inferior)
+      const balTotal = balance.push + balance.pull + balance.legs + balance.core + balance.other;
+      if (balTotal > 0) {
+        content.appendChild(el('<div class="section-title">Equilibrio muscular</div>'));
+        const card = el('<div class="card"></div>');
+        const pairBar = (la, va, lb, vb) => {
+          const tot = va + vb;
+          const pa = tot > 0 ? Math.round((va / tot) * 100) : 50;
+          return `
+            <div style="margin-bottom:14px">
+              <div class="row between" style="font-size:13px;margin-bottom:5px">
+                <span style="font-weight:700">${la} · ${pa}%</span>
+                <span style="font-weight:700">${100 - pa}% · ${lb}</span>
+              </div>
+              <div class="bar-track" style="display:flex">
+                <div style="width:${pa}%;background:var(--primary);height:100%"></div>
+                <div style="width:${100 - pa}%;background:var(--primary-dim);height:100%"></div>
+              </div>
+            </div>`;
+        };
+        card.innerHTML = pairBar('Empuje', balance.push, 'Tirón', balance.pull)
+          + pairBar('Sup.', balance.push + balance.pull, 'Inf.', balance.legs);
+        if (balance.other > 0) {
+          card.appendChild(el(`<div class="faint" style="font-size:12px">Otros (sin clasificar): ${fmtNum(balance.other)} ${esc(u)}</div>`));
         }
         content.appendChild(card);
       }

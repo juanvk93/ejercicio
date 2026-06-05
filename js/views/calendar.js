@@ -4,7 +4,7 @@
    sesiones de un día concreto. Navegación por meses.
    ============================================================ */
 
-import { el, esc, fmtDuration, dateInputValue } from '../utils.js';
+import { el, esc, fmtNum, fmtDuration, dateInputValue } from '../utils.js';
 import { navigate } from '../router.js';
 import { unitLabel } from '../prefs.js';
 import * as store from '../store.js';
@@ -58,6 +58,48 @@ export async function calendar() {
   // Resumen del mes.
   const monthInfo = el('<div class="muted center" style="font-size:13px;margin:10px 0 0"></div>');
   node.appendChild(monthInfo);
+
+  // Heatmap de constancia (últimas 12 semanas, intensidad por volumen del día).
+  node.appendChild(el('<div class="section-title">Constancia · 12 semanas</div>'));
+  const hmCard = el('<div class="card"></div>');
+  const volByKey = new Map();
+  for (const [k, list] of byDay) {
+    let v = 0;
+    for (const sx of list) v += store.sessionStats(sx).totalVolume;
+    volByKey.set(k, v);
+  }
+  const maxVol = Math.max(1, ...volByKey.values());
+  const level = (v) => {
+    if (!v) return 0;
+    const r = v / maxVol;
+    return r <= 0.25 ? 1 : (r <= 0.5 ? 2 : (r <= 0.75 ? 3 : 4));
+  };
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  const startMon = new Date(today0);
+  startMon.setDate(today0.getDate() - ((today0.getDay() + 6) % 7) - 11 * 7); // lunes, 12 columnas atrás
+  const hm = el('<div class="heatmap"></div>');
+  for (let c = 0; c < 12; c++) {
+    const col = el('<div class="hm-col"></div>');
+    for (let r = 0; r < 7; r++) {
+      const d = new Date(startMon);
+      d.setDate(startMon.getDate() + c * 7 + r);
+      const k = keyOf(d.getFullYear(), d.getMonth(), d.getDate());
+      const future = d.getTime() > today0.getTime();
+      const vol = volByKey.get(k) || 0;
+      const lvl = future ? 0 : level(vol);
+      const title = `${k}${vol ? ` · ${fmtNum(vol)} ${unitLabel()} vol` : ''}`;
+      col.appendChild(el(`<div class="hm-cell hm-${lvl}" title="${esc(title)}"></div>`));
+    }
+    hm.appendChild(col);
+  }
+  hmCard.appendChild(hm);
+  hmCard.appendChild(el(`
+    <div class="row" style="justify-content:flex-end;gap:5px;align-items:center;margin-top:8px;font-size:11px">
+      <span class="faint">menos</span>
+      <span class="hm-cell hm-0"></span><span class="hm-cell hm-1"></span><span class="hm-cell hm-2"></span><span class="hm-cell hm-3"></span><span class="hm-cell hm-4"></span>
+      <span class="faint">más</span>
+    </div>`));
+  node.appendChild(hmCard);
 
   // Panel del día seleccionado.
   const panel = el('<div id="cal-panel"></div>');

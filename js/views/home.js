@@ -19,6 +19,7 @@ export async function home() {
   const finished = sessions.filter((s) => s.status === 'finished').slice(0, 8);
   const groups = await store.listGroups();
   const goalsProgress = await store.goalProgress();
+  const todayGroups = active ? [] : await store.todayPlannedGroups();
 
   // CTA principal: si hay sesión activa, invita a continuarla (no deja iniciar otra).
   const cta = active
@@ -48,6 +49,30 @@ export async function home() {
         </div>
       </div>`);
     card.onclick = () => navigate(`#/session/${active.id}`);
+    node.appendChild(card);
+  }
+
+  // "Hoy toca" — entreno planificado para hoy (si no hay sesión en curso)
+  if (todayGroups.length) {
+    node.appendChild(el('<div class="section-title">Hoy toca</div>'));
+    const names = todayGroups.map((g) => g.name).join(' + ');
+    const card = el(`
+      <div class="card active-session">
+        <div class="row" style="gap:14px">
+          <span class="av av-lg">${DUMBBELL}</span>
+          <div class="grow">
+            <div class="title" style="font-weight:800;font-size:18px">${esc(names)}</div>
+            <div class="sub muted">Tu plan para hoy</div>
+          </div>
+        </div>
+        <button class="btn primary block mt" id="start-today">Empezar este entreno</button>
+      </div>`);
+    card.querySelector('#start-today').onclick = async () => {
+      const session = await store.buildNewSession(todayGroups, { startedAt: Date.now() });
+      if (!session.exercises.length) { toast('Los grupos de hoy no tienen ejercicios', 'error'); return; }
+      await store.saveSession(session);
+      navigate(`#/session/${session.id}`);
+    };
     node.appendChild(card);
   }
 
@@ -149,11 +174,18 @@ async function onNewSession(groups) {
   if (!groups.length) {
     const content = el(`
       <div>
-        <p class="muted" style="margin-top:0">No tienes grupos de ejercicios. Crea uno primero.</p>
+        <p class="muted" style="margin-top:0">No tienes grupos de ejercicios. Crea uno o empieza una sesión libre y añade ejercicios sobre la marcha.</p>
         <button class="btn primary block" id="go-groups">Crear grupo</button>
+        <button class="btn ghost block mt" id="start-free">Empezar sesión libre</button>
       </div>`);
     const { close } = showModal('Nueva sesión', content);
     content.querySelector('#go-groups').onclick = () => { close(); navigate('#/groups'); };
+    content.querySelector('#start-free').onclick = async () => {
+      const session = store.buildEmptySession({ startedAt: Date.now() });
+      await store.saveSession(session);
+      close();
+      navigate(`#/session/${session.id}`);
+    };
     return;
   }
 
@@ -191,6 +223,7 @@ async function onNewSession(groups) {
         </label>
       </div>
       <button class="btn primary block mt" id="start" disabled>Comenzar sesión</button>
+      <button class="btn ghost block mt" id="start-free">Empezar sesión libre (sin grupo)</button>
     </div>`);
 
   const chipsHost = content.querySelector('#g-chips');
@@ -212,17 +245,26 @@ async function onNewSession(groups) {
 
   const { close } = showModal('Nueva sesión', content);
 
+  // Opciones comunes (día/hora, temporizador, RPE) leídas del formulario.
+  const readOpts = () => ({
+    startedAt: tsFromDateTime(content.querySelector('#s-date').value, content.querySelector('#s-time').value),
+    restTimer: { enabled: restChk.checked, seconds: num(content.querySelector('#s-rest-secs').value) || 90 },
+    trackRpe: content.querySelector('#s-rpe').checked,
+  });
+
   startBtn.onclick = async () => {
     if (!selected.size) return;
-    const date = content.querySelector('#s-date').value;
-    const time = content.querySelector('#s-time').value;
     const chosen = [];
     for (const g of groups) if (selected.has(g.id)) chosen.push(await store.getGroup(g.id));
-    const startedAt = tsFromDateTime(date, time);
-    const restTimer = { enabled: restChk.checked, seconds: num(content.querySelector('#s-rest-secs').value) || 90 };
-    const trackRpe = content.querySelector('#s-rpe').checked;
-    const session = await store.buildNewSession(chosen, { startedAt, restTimer, trackRpe });
+    const session = await store.buildNewSession(chosen, readOpts());
     if (!session.exercises.length) { toast('Los grupos elegidos no tienen ejercicios', 'error'); return; }
+    await store.saveSession(session);
+    close();
+    navigate(`#/session/${session.id}`);
+  };
+
+  content.querySelector('#start-free').onclick = async () => {
+    const session = store.buildEmptySession(readOpts());
     await store.saveSession(session);
     close();
     navigate(`#/session/${session.id}`);
