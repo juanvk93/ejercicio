@@ -24,6 +24,7 @@ import { calendar } from './views/calendar.js';
 import { weight } from './views/weight.js';
 import { calculator } from './views/calculator.js';
 import { settings } from './views/settings.js';
+import { changelog } from './views/changelog.js';
 
 const viewHost = qs('#view');
 const titleEl = qs('#app-title');
@@ -55,7 +56,7 @@ function syncTabbar() {
     const r = tab.dataset.route;
     let active = false;
     if (r === '#/') active = cur === '#/' || cur.startsWith('#/session');
-    else if (r === '#/settings') active = cur === '#/settings' || ['#/exercises', '#/groups', '#/weight', '#/calculator'].includes(cur);
+    else if (r === '#/settings') active = cur === '#/settings' || ['#/exercises', '#/groups', '#/weight', '#/calculator', '#/changelog'].includes(cur);
     else active = cur === r;
     tab.classList.toggle('active', active);
   });
@@ -77,6 +78,7 @@ route('/calendar', (ctx) => renderView(calendar, ctx));
 route('/weight', (ctx) => renderView(weight, ctx));
 route('/calculator', (ctx) => renderView(calculator, ctx));
 route('/settings', (ctx) => renderView(settings, ctx));
+route('/changelog', (ctx) => renderView(changelog, ctx));
 setNotFound((ctx) => renderView(async () => ({
   title: 'No encontrado', back: '#/',
   node: el('<div class="empty"><p>Página no encontrada.</p></div>'),

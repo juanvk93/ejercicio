@@ -273,7 +273,12 @@ export async function listBodyweight() {
   const all = await db.getAll(STORES.BODYWEIGHT);
   return all.sort((a, b) => a.date.localeCompare(b.date));
 }
-export function saveBodyweight({ id, date, weight }) {
+export async function saveBodyweight({ id, date, weight }) {
+  // Un único registro por día: si ya hay uno en esa fecha, se actualiza (no se duplica).
+  if (!id) {
+    const existing = (await db.getAll(STORES.BODYWEIGHT)).find((r) => r.date === date);
+    if (existing) id = existing.id;
+  }
   const r = { id: id || uid(), date, weight: round(num(weight), 2) };
   return db.put(STORES.BODYWEIGHT, r);
 }
@@ -289,8 +294,14 @@ export async function listMeasurements(type = null) {
   const filtered = type ? all.filter((m) => m.type === type) : all;
   return filtered.sort((a, b) => a.date.localeCompare(b.date));
 }
-export function saveMeasurement({ id, type, date, value }) {
-  const r = { id: id || uid(), type: String(type).trim(), date, value: round(num(value), 2) };
+export async function saveMeasurement({ id, type, date, value }) {
+  const t = String(type).trim();
+  // Un único registro por tipo y día: si ya existe, se actualiza (no se duplica).
+  if (!id) {
+    const existing = (await db.getAll(STORES.MEASUREMENTS)).find((m) => m.type === t && m.date === date);
+    if (existing) id = existing.id;
+  }
+  const r = { id: id || uid(), type: t, date, value: round(num(value), 2) };
   return db.put(STORES.MEASUREMENTS, r);
 }
 export function deleteMeasurement(id) { return db.remove(STORES.MEASUREMENTS, id); }
@@ -723,6 +734,7 @@ export async function achievements() {
       exIds.add(ex.exerciseId);
       for (const set of ex.sets || []) {
         const w = num(set.weight), r = num(set.reps);
+        if (w <= 0 || r <= 0) continue; // solo series reales (igual que en personalRecords)
         if (w > maxTopWeight) maxTopWeight = w;
         const rm = epley1RM(w, r);
         if (rm > max1RM) max1RM = rm;

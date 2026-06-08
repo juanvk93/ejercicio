@@ -3,7 +3,7 @@
    Todas las sesiones finalizadas que lo contienen, con sus series.
    ============================================================ */
 
-import { el, esc, fmtNum, fmtDate } from '../utils.js';
+import { el, esc, fmtNum, fmtDate, round } from '../utils.js';
 import { navigate } from '../router.js';
 import { unitLabel } from '../prefs.js';
 import * as store from '../store.js';
@@ -54,7 +54,7 @@ export async function exerciseHistory(ctx) {
         <span class="badge">${fmtNum(e.volume)} ${esc(u)}</span>
       </div>`));
     const rows = e.sets.map((st, i) => {
-      const isBest = st.weight > 0 && st.weight === best;
+      const isBest = st.weight > 0 && round(st.weight, 1) === best;
       return `<tr${isBest ? ' style="color:var(--primary);font-weight:700"' : ''}>
         <td class="set-idx">${i + 1}</td>
         <td>${fmtNum(st.reps)}</td>

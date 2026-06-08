@@ -204,7 +204,14 @@ export async function settings() {
   };
   node.appendChild(dataCard);
 
-  node.appendChild(el('<p class="faint center mt" style="font-size:12px">Gym Tracker · PWA offline · v1.0</p>'));
+  // Acerca de — registro de cambios
+  node.appendChild(el('<div class="section-title">Acerca de</div>'));
+  const aboutList = el('<div class="list"></div>');
+  aboutList.appendChild(navItem('Novedades', 'Registro de cambios de la app', '#/changelog',
+    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/>'));
+  node.appendChild(aboutList);
+
+  node.appendChild(el('<p class="faint center mt" style="font-size:12px">Gym Tracker · PWA offline · v1.1.0</p>'));
 
   return { title: 'Ajustes', back: false, node };
 }

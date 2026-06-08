@@ -440,6 +440,21 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary)
 .hm-3 { background: color-mix(in srgb, var(--primary) 78%, var(--bg-elev-2)); }
 .hm-4 { background: var(--primary); }
 
+/* ---------- Registro de cambios (Novedades) ---------- */
+.cl-version { margin-bottom: 12px; }
+.cl-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+.cl-ver { font-weight: 800; font-size: 18px; }
+.cl-date { font-size: 12px; }
+.cl-sec { margin-top: 10px; }
+.cl-sec-name { font-weight: 700; font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
+.cl-list { margin: 0; padding-left: 18px; }
+.cl-list li { font-size: 13px; line-height: 1.5; margin-bottom: 6px; }
+.cl-list li:last-child { margin-bottom: 0; }
+.cl-list code {
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+  padding: 0 5px; border-radius: 6px; font-size: 12px;
+}
+
 /* Logros bloqueados (atenuados) y desbloqueados (resaltados con el acento) */
 .ach-locked { opacity: 0.6; }
 .ach-unlocked { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }

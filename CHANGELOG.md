@@ -5,7 +5,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
 ## [Sin publicar]
 
+## [1.1.0] - 2026-06-09
+
 ### Añadido
+- **Registro de cambios en la app:** Ajustes → Novedades (`#/changelog`) muestra este historial
+  dentro de la app, leyendo y renderizando `CHANGELOG.md` (se cachea para funcionar offline).
+  (`js/views/changelog.js`, `js/views/settings.js`, `js/app.js`, `css/styles.css`, `service-worker.js`)
 - **Más logros (gamificación):** el catálogo pasa de 11 a ~40 medallas, agrupadas por categoría
   (Constancia, Volumen, Esfuerzo, Fuerza, Dedicación, Variedad y Hábitos) con progreso por sección.
   Nuevos hitos de repeticiones/series totales, volumen de una sola sesión, tiempo entrenado,
@@ -112,6 +117,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
   ahora incluye `est1RM` por sesión).
 
 ### Corregido
+- **Peso/medidas duplicados el mismo día:** registrar el peso corporal (o una medida) en una
+  fecha que ya tenía dato creaba una segunda entrada en vez de actualizarla, lo que ensuciaba
+  la gráfica de evolución y los deltas del historial. Ahora se hace *upsert*: un único registro
+  por día (y por tipo en medidas). (`js/store.js` → `saveBodyweight`, `saveMeasurement`)
+- **Logro de fuerza desbloqueable con series fantasma:** los logros de peso (Club de los 100…)
+  contaban el peso de una serie aunque tuviera 0 repeticiones (peso tecleado sin hacerla),
+  pudiendo desbloquearse sin un récord real. Ahora solo cuentan series reales (reps > 0 y peso > 0),
+  igual que los récords personales. (`js/store.js` → `achievements`)
+- **Serie récord no se resaltaba en el historial** cuando el peso tenía 2 decimales (p. ej. discos
+  de 1,25 kg → 41,25): se comparaba el peso bruto con el récord ya redondeado a 1 decimal y no
+  coincidía. Ahora la comparación se hace redondeada. (`js/views/exercise-history.js`)
 - **Mapa de calor anual salía siempre vacío:** la regla base `.yh-cell` (fondo gris) estaba
   *después* de los niveles `.hm-1…4` en la hoja de estilos y, a igual especificidad, ganaba,
   anulando el color de las celdas con actividad. Los niveles de intensidad se mueven al final
@@ -160,5 +176,6 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
   (exportar/importar) y el borrado de datos los incluyen. (`js/db.js`, `js/views/settings.js`)
 - **Buscador de ejercicios separado del botón "+ Nuevo ejercicio"** con un margen superior.
   (`js/views/exercises.js`)
-- Caché del Service Worker subida a `gym-tracker-v36` (incluye `planner.js` y `achievements.js`
-  en el app-shell) para invalidar la versión anterior. (`service-worker.js`)
+- Caché del Service Worker subida a `gym-tracker-v39` (incluye `accent.js`, `planner.js`,
+  `achievements.js`, `changelog.js` y el propio `CHANGELOG.md` en el app-shell) para invalidar
+  la versión anterior. (`service-worker.js`)
