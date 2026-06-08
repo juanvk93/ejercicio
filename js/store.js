@@ -7,6 +7,7 @@
 import * as db from './db.js';
 import { STORES } from './db.js';
 import { uid, num, round } from './utils.js';
+import { unitLabel } from './prefs.js';
 
 /* ---------------- Ejercicios ---------------- */
 export async function listExercises() {
@@ -690,31 +691,119 @@ export async function rpeTrend({ since = null } = {}) {
   return series;
 }
 
-/** Catálogo de logros con su estado (desbloqueado y progreso) según los datos. */
+/**
+ * Catálogo de logros con su estado (desbloqueado y progreso) según los datos.
+ * Cada logro tiene una categoría (`cat`) para agruparlos en la vista y, opcional-
+ * mente, un sufijo (`suffix`) para la línea de progreso (p. ej. unidad de peso o "h").
+ */
 export async function achievements() {
+  const HOUR = 3600 * 1000;
   const sessions = await finishedSessions();
-  let totalVolume = 0;
-  for (const s of sessions) totalVolume += sessionStats(s).totalVolume;
-  const freq = await frequencyStats();
-  const prCount = (await personalRecords()).length;
+
+  // Una sola pasada por las sesiones para todas las métricas acumuladas / máximas.
+  let totalVolume = 0, totalReps = 0, totalSets = 0, totalDuration = 0;
+  let maxSessionVolume = 0, maxSessionDuration = 0;
+  let maxTopWeight = 0, max1RM = 0;
+  let earlyCount = 0, nightCount = 0, weekendCount = 0;
+  const exIds = new Set();
+  for (const s of sessions) {
+    const st = sessionStats(s);
+    totalVolume += st.totalVolume;
+    totalReps += st.totalReps;
+    totalSets += st.totalSets;
+    totalDuration += st.duration;
+    if (st.totalVolume > maxSessionVolume) maxSessionVolume = st.totalVolume;
+    if (st.duration > maxSessionDuration) maxSessionDuration = st.duration;
+    const d = new Date(s.startedAt);
+    const h = d.getHours(), dow = d.getDay();
+    if (h < 7) earlyCount++;
+    if (h >= 22) nightCount++;
+    if (dow === 0 || dow === 6) weekendCount++;
+    for (const ex of s.exercises || []) {
+      exIds.add(ex.exerciseId);
+      for (const set of ex.sets || []) {
+        const w = num(set.weight), r = num(set.reps);
+        if (w > maxTopWeight) maxTopWeight = w;
+        const rm = epley1RM(w, r);
+        if (rm > max1RM) max1RM = rm;
+      }
+    }
+  }
+
+  const [freq, prs, tags, bw, goals] = await Promise.all([
+    frequencyStats(), personalRecords(), volumeByTag(), listBodyweight(), goalProgress(),
+  ]);
+
+  const u = unitLabel();
   const sc = sessions.length;
   const bs = freq.bestStreak || 0;
+  const prCount = prs.length;
+  const tagCount = tags.filter((t) => t.tag !== 'Sin etiqueta').length;
+  const bwCount = bw.length;
+  const goalsDone = goals.filter((g) => g.achieved).length;
+  const totalHours = round(totalDuration / HOUR, 1);
+  const longestMin = Math.round(maxSessionDuration / 60000);
 
   const catalog = [
-    { id: 's1', icon: '🏁', title: 'Primer entreno', desc: 'Completa tu primera sesión', value: sc, target: 1 },
-    { id: 's10', icon: '💪', title: 'Cogiendo el ritmo', desc: '10 sesiones completadas', value: sc, target: 10 },
-    { id: 's50', icon: '🦾', title: 'Veterano', desc: '50 sesiones completadas', value: sc, target: 50 },
-    { id: 's100', icon: '🏛️', title: 'Centenario', desc: '100 sesiones completadas', value: sc, target: 100 },
-    { id: 'st4', icon: '🔥', title: 'Un mes seguido', desc: 'Racha de 4 semanas', value: bs, target: 4 },
-    { id: 'st12', icon: '🌋', title: 'Imparable', desc: 'Racha de 12 semanas', value: bs, target: 12 },
-    { id: 'v100k', icon: '🏋️', title: '100k levantados', desc: '100.000 de volumen total', value: totalVolume, target: 100000 },
-    { id: 'v500k', icon: '⚙️', title: 'Medio millón', desc: '500.000 de volumen total', value: totalVolume, target: 500000 },
-    { id: 'v1m', icon: '🌟', title: 'Un millón', desc: '1.000.000 de volumen total', value: totalVolume, target: 1000000 },
-    { id: 'pr1', icon: '🏆', title: 'Primer récord', desc: 'Registra tu primer récord', value: prCount, target: 1 },
-    { id: 'pr10', icon: '👑', title: 'Coleccionista de PRs', desc: 'Récords en 10 ejercicios', value: prCount, target: 10 },
+    // ---- Constancia (sesiones + rachas) ----
+    { cat: 'Constancia', id: 's1', icon: '🏁', title: 'Primer entreno', desc: 'Completa tu primera sesión', value: sc, target: 1 },
+    { cat: 'Constancia', id: 's10', icon: '💪', title: 'Cogiendo el ritmo', desc: '10 sesiones completadas', value: sc, target: 10 },
+    { cat: 'Constancia', id: 's50', icon: '🦾', title: 'Veterano', desc: '50 sesiones completadas', value: sc, target: 50 },
+    { cat: 'Constancia', id: 's100', icon: '🏛️', title: 'Centenario', desc: '100 sesiones completadas', value: sc, target: 100 },
+    { cat: 'Constancia', id: 's250', icon: '🗿', title: 'Leyenda', desc: '250 sesiones completadas', value: sc, target: 250 },
+    { cat: 'Constancia', id: 'st2', icon: '⚡', title: 'Constante', desc: 'Racha de 2 semanas seguidas', value: bs, target: 2 },
+    { cat: 'Constancia', id: 'st4', icon: '🔥', title: 'Un mes seguido', desc: 'Racha de 4 semanas', value: bs, target: 4 },
+    { cat: 'Constancia', id: 'st12', icon: '🌋', title: 'Imparable', desc: 'Racha de 12 semanas', value: bs, target: 12 },
+    { cat: 'Constancia', id: 'st26', icon: '🏔️', title: 'Medio año en racha', desc: 'Racha de 26 semanas', value: bs, target: 26 },
+    { cat: 'Constancia', id: 'st52', icon: '🏅', title: 'Un año sin fallar', desc: 'Racha de 52 semanas', value: bs, target: 52 },
+
+    // ---- Volumen (kg·reps levantados) ----
+    { cat: 'Volumen', id: 'v50k', icon: '🪙', title: 'Calentando motores', desc: '50.000 de volumen total', value: totalVolume, target: 50000 },
+    { cat: 'Volumen', id: 'v100k', icon: '🏋️', title: '100k levantados', desc: '100.000 de volumen total', value: totalVolume, target: 100000 },
+    { cat: 'Volumen', id: 'v500k', icon: '⚙️', title: 'Medio millón', desc: '500.000 de volumen total', value: totalVolume, target: 500000 },
+    { cat: 'Volumen', id: 'v1m', icon: '🌟', title: 'Un millón', desc: '1.000.000 de volumen total', value: totalVolume, target: 1000000 },
+    { cat: 'Volumen', id: 'v2m', icon: '💎', title: 'Dos millones', desc: '2.000.000 de volumen total', value: totalVolume, target: 2000000 },
+    { cat: 'Volumen', id: 'sv10k', icon: '🦣', title: 'Día bestia', desc: '10.000 de volumen en una sola sesión', value: maxSessionVolume, target: 10000 },
+    { cat: 'Volumen', id: 'sv20k', icon: '🐘', title: 'Megadía', desc: '20.000 de volumen en una sola sesión', value: maxSessionVolume, target: 20000 },
+
+    // ---- Esfuerzo (repeticiones + series) ----
+    { cat: 'Esfuerzo', id: 'r1k', icon: '🔂', title: 'Mil repeticiones', desc: '1.000 repeticiones totales', value: totalReps, target: 1000 },
+    { cat: 'Esfuerzo', id: 'r10k', icon: '🔄', title: 'Diez mil reps', desc: '10.000 repeticiones totales', value: totalReps, target: 10000 },
+    { cat: 'Esfuerzo', id: 'r50k', icon: '📈', title: 'Cincuenta mil reps', desc: '50.000 repeticiones totales', value: totalReps, target: 50000 },
+    { cat: 'Esfuerzo', id: 'set500', icon: '🧱', title: 'Constructor', desc: '500 series completadas', value: totalSets, target: 500 },
+    { cat: 'Esfuerzo', id: 'set2k', icon: '🏗️', title: 'Arquitecto', desc: '2.000 series completadas', value: totalSets, target: 2000 },
+
+    // ---- Fuerza (récords + pesos máximos) ----
+    { cat: 'Fuerza', id: 'pr1', icon: '🏆', title: 'Primer récord', desc: 'Registra tu primer récord', value: prCount, target: 1 },
+    { cat: 'Fuerza', id: 'pr10', icon: '👑', title: 'Coleccionista de PRs', desc: 'Récords en 10 ejercicios', value: prCount, target: 10 },
+    { cat: 'Fuerza', id: 'pr25', icon: '💍', title: 'Maestro de récords', desc: 'Récords en 25 ejercicios', value: prCount, target: 25 },
+    { cat: 'Fuerza', id: 'w100', icon: '🏋️‍♂️', title: 'Club de los 100', desc: `Levanta 100 ${u} en una sola serie`, value: maxTopWeight, target: 100, suffix: u },
+    { cat: 'Fuerza', id: 'w140', icon: '🦏', title: 'Bestia parda', desc: `Levanta 140 ${u} en una sola serie`, value: maxTopWeight, target: 140, suffix: u },
+    { cat: 'Fuerza', id: 'rm150', icon: '🚀', title: '1RM de 150', desc: `1RM estimado de 150 ${u}`, value: Math.round(max1RM), target: 150, suffix: u },
+
+    // ---- Dedicación (tiempo entrenado) ----
+    { cat: 'Dedicación', id: 't10h', icon: '⏱️', title: 'Diez horas', desc: '10 horas entrenadas en total', value: totalHours, target: 10, suffix: 'h' },
+    { cat: 'Dedicación', id: 't50h', icon: '⏰', title: 'Cincuenta horas', desc: '50 horas entrenadas en total', value: totalHours, target: 50, suffix: 'h' },
+    { cat: 'Dedicación', id: 't100h', icon: '🕰️', title: 'Cien horas', desc: '100 horas entrenadas en total', value: totalHours, target: 100, suffix: 'h' },
+    { cat: 'Dedicación', id: 'long90', icon: '🏃', title: 'Maratoniano', desc: 'Una sesión de 90 minutos', value: longestMin, target: 90, suffix: 'min' },
+
+    // ---- Variedad (ejercicios + grupos musculares) ----
+    { cat: 'Variedad', id: 'ex10', icon: '🧭', title: 'Explorador', desc: '10 ejercicios distintos realizados', value: exIds.size, target: 10 },
+    { cat: 'Variedad', id: 'ex25', icon: '🗺️', title: 'Aventurero', desc: '25 ejercicios distintos realizados', value: exIds.size, target: 25 },
+    { cat: 'Variedad', id: 'tag5', icon: '🎨', title: 'Cuerpo completo', desc: '5 grupos musculares distintos', value: tagCount, target: 5 },
+    { cat: 'Variedad', id: 'tag10', icon: '🌈', title: 'Todoterreno', desc: '10 grupos musculares distintos', value: tagCount, target: 10 },
+
+    // ---- Hábitos (horarios + seguimiento) ----
+    { cat: 'Hábitos', id: 'early', icon: '🌅', title: 'Madrugador', desc: 'Entrena antes de las 7:00', value: earlyCount, target: 1 },
+    { cat: 'Hábitos', id: 'night', icon: '🦉', title: 'Búho nocturno', desc: 'Entrena a partir de las 22:00', value: nightCount, target: 1 },
+    { cat: 'Hábitos', id: 'weekend', icon: '🏖️', title: 'Finde activo', desc: '10 sesiones en fin de semana', value: weekendCount, target: 10 },
+    { cat: 'Hábitos', id: 'bw10', icon: '⚖️', title: 'A control', desc: 'Registra tu peso corporal 10 veces', value: bwCount, target: 10 },
+    { cat: 'Hábitos', id: 'goal1', icon: '🎯', title: 'Meta cumplida', desc: 'Alcanza uno de tus objetivos', value: goalsDone, target: 1 },
   ];
+
   return catalog.map((a) => ({
     ...a,
+    suffix: a.suffix || '',
     unlocked: a.value >= a.target,
     pct: a.target > 0 ? Math.min(100, Math.round((a.value / a.target) * 100)) : 0,
   }));

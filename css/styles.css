@@ -58,6 +58,20 @@
   --card-hi: transparent;
 }
 
+/* ---------- Colores de acento ----------
+   Sobrescriben el primario por tema. El acento "azul" es el de base
+   (definido arriba), así que aquí solo van el resto. */
+:root[data-theme="dark"][data-accent="green"]  { --primary: #35c26b; --primary-dim: #1f8f4d; --primary-soft: rgba(53,194,107,.14);  --glow: rgba(53,194,107,.18); }
+:root[data-theme="light"][data-accent="green"]  { --primary: #3f9e63; --primary-dim: #347f51; --primary-soft: rgba(63,158,99,.16);   --glow: rgba(63,158,99,.12); }
+:root[data-theme="dark"][data-accent="teal"]    { --primary: #22c7bb; --primary-dim: #178f87; --primary-soft: rgba(34,199,187,.14);  --glow: rgba(34,199,187,.18); }
+:root[data-theme="light"][data-accent="teal"]   { --primary: #2ba39a; --primary-dim: #228079; --primary-soft: rgba(43,163,154,.16);  --glow: rgba(43,163,154,.12); }
+:root[data-theme="dark"][data-accent="violet"]  { --primary: #9b6dff; --primary-dim: #6e44c9; --primary-soft: rgba(155,109,255,.14); --glow: rgba(155,109,255,.18); }
+:root[data-theme="light"][data-accent="violet"] { --primary: #8064cf; --primary-dim: #6a52b0; --primary-soft: rgba(128,100,207,.16); --glow: rgba(128,100,207,.12); }
+:root[data-theme="dark"][data-accent="pink"]    { --primary: #ff6cae; --primary-dim: #c64684; --primary-soft: rgba(255,108,174,.14); --glow: rgba(255,108,174,.18); }
+:root[data-theme="light"][data-accent="pink"]   { --primary: #d56798; --primary-dim: #b5527f; --primary-soft: rgba(213,103,152,.16); --glow: rgba(213,103,152,.12); }
+:root[data-theme="dark"][data-accent="orange"]  { --primary: #ff924d; --primary-dim: #c96a2f; --primary-soft: rgba(255,146,77,.14);  --glow: rgba(255,146,77,.18); }
+:root[data-theme="light"][data-accent="orange"] { --primary: #d9803f; --primary-dim: #bb6a33; --primary-soft: rgba(217,128,63,.16);  --glow: rgba(217,128,63,.12); }
+
 /* ---------- Reset ---------- */
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
@@ -267,6 +281,17 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary)
 .chip.selected { background: var(--primary); border-color: var(--primary); color: #fff; }
 .chip-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 
+/* Selector de color de acento */
+.swatch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.swatch {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text);
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: border-color var(--transition);
+}
+.swatch-dot { width: 18px; height: 18px; border-radius: 999px; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.swatch.selected { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
+
 /* Toggle de periodo (segmentado horizontal, informes) */
 .period-toggle {
   display: flex; gap: 2px; padding: 4px;
@@ -415,8 +440,13 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary)
 .hm-3 { background: color-mix(in srgb, var(--primary) 78%, var(--bg-elev-2)); }
 .hm-4 { background: var(--primary); }
 
-/* Logros bloqueados (atenuados) */
+/* Logros bloqueados (atenuados) y desbloqueados (resaltados con el acento) */
 .ach-locked { opacity: 0.6; }
+.ach-unlocked { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.ach-unlocked .av-lg {
+  background: var(--primary-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 35%, transparent) inset;
+}
 
 /* ---------- Récords personales (informes) ---------- */
 .pr-item { padding: 10px 0; border-bottom: 1px solid var(--border); }

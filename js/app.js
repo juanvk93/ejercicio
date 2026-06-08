@@ -7,6 +7,7 @@
 import { route, setNotFound, startRouter, navigate, getCurrentRoute } from './router.js';
 import { qs, qsa, el, esc } from './utils.js';
 import { setTheme, getTheme } from './theme.js';
+import { setAccent, getAccent } from './accent.js';
 import * as store from './store.js';
 
 // Vistas
@@ -119,6 +120,7 @@ function registerSW() {
 /* ---------------- Arranque ---------------- */
 async function init() {
   setTheme(getTheme());
+  setAccent(getAccent());
   await store.seedIfEmpty();
   await store.migrate();
   startRouter();

@@ -6,6 +6,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 ## [Sin publicar]
 
 ### Añadido
+- **Más logros (gamificación):** el catálogo pasa de 11 a ~40 medallas, agrupadas por categoría
+  (Constancia, Volumen, Esfuerzo, Fuerza, Dedicación, Variedad y Hábitos) con progreso por sección.
+  Nuevos hitos de repeticiones/series totales, volumen de una sola sesión, tiempo entrenado,
+  pesos máximos y 1RM, variedad de ejercicios/grupos musculares y hábitos (madrugar, entrenar de
+  noche, fin de semana, peso corporal, objetivos cumplidos). (`js/store.js` → `achievements`,
+  `js/views/achievements.js`, `css/styles.css`)
+- **Color de acento configurable:** Ajustes → Apariencia, paleta predefinida (azul, verde,
+  turquesa, morado, rosa, naranja) que tiñe botones, dot del título, gráficas y detalles; con
+  tonos propios para tema claro/oscuro y sin parpadeo al cargar. Viaja en el backup.
+  (`js/accent.js`, `js/views/settings.js`, `css/styles.css`, `index.html`, `js/app.js`)
 - **Planificador semanal:** asigna grupos a cada día de la semana (Ajustes → Planificador,
   `#/planner`). Inicio muestra **"Hoy toca"** con el entreno del día y un botón para empezarlo.
   Nuevo almacén `planner`. (`js/views/planner.js`, `js/views/home.js`, `js/store.js`, `js/db.js`)

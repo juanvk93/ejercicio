@@ -16,7 +16,7 @@
   <meta name="apple-mobile-web-app-title" content="Gym Tracker" />
   <meta name="mobile-web-app-capable" content="yes" />
 
-  <!-- Evita FOUC del tema: aplica el tema guardado antes de pintar -->
+  <!-- Evita FOUC: aplica tema y color de acento guardados antes de pintar -->
   <script>
     (function () {
       try {
@@ -24,6 +24,7 @@
         document.documentElement.setAttribute('data-theme', t);
         var meta = document.getElementById('theme-color-meta');
         if (meta) meta.setAttribute('content', t === 'dark' ? '#0f1115' : '#e9ebf3');
+        document.documentElement.setAttribute('data-accent', localStorage.getItem('gt-accent') || 'blue');
       } catch (e) {}
     })();
   </script>

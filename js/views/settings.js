@@ -6,6 +6,7 @@
 import { el, esc, toast, confirmDialog } from '../utils.js';
 import { navigate } from '../router.js';
 import { getTheme, setTheme } from '../theme.js';
+import { getAccent, setAccent, ACCENTS } from '../accent.js';
 import { getUnit, setUnit } from '../prefs.js';
 import * as db from '../db.js';
 import * as store from '../store.js';
@@ -78,6 +79,32 @@ export async function settings() {
   paintTheme();
   node.appendChild(themeCard);
 
+  // Color de acento
+  const accentCard = el(`
+    <div class="card">
+      <div class="row between mb">
+        <div class="grow"><div class="title" style="font-weight:700">Color de acento</div>
+          <div class="sub muted">Tiñe botones, gráficas y detalles</div></div>
+      </div>
+      <div class="swatch-grid">
+        ${ACCENTS.map((a) => `
+          <button class="swatch" data-accent="${a.id}" title="${esc(a.name)}" aria-label="${esc(a.name)}">
+            <span class="swatch-dot" style="background:${a.swatch}"></span>
+            <span class="swatch-name">${esc(a.name)}</span>
+          </button>`).join('')}
+      </div>
+    </div>`);
+  function paintAccent() {
+    const cur = getAccent();
+    accentCard.querySelectorAll('[data-accent]').forEach((b) =>
+      b.classList.toggle('selected', b.dataset.accent === cur));
+  }
+  accentCard.querySelectorAll('[data-accent]').forEach((b) => {
+    b.onclick = () => { setAccent(b.dataset.accent); paintAccent(); };
+  });
+  paintAccent();
+  node.appendChild(accentCard);
+
   // Unidad de peso (global)
   const unitCard = el(`
     <div class="card">
@@ -113,8 +140,8 @@ export async function settings() {
 
   dataCard.querySelector('#export').onclick = async () => {
     const data = await db.exportAll();
-    // Incluye también la configuración (tema + unidad).
-    data.config = { theme: getTheme(), unit: getUnit() };
+    // Incluye también la configuración (tema + acento + unidad).
+    data.config = { theme: getTheme(), accent: getAccent(), unit: getUnit() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -152,6 +179,7 @@ export async function settings() {
         // Restaura la configuración si viene en el backup.
         if (data.config) {
           if (data.config.theme) setTheme(data.config.theme);
+          if (data.config.accent) setAccent(data.config.accent);
           if (data.config.unit) setUnit(data.config.unit);
         }
         toast('Datos importados', 'success');
