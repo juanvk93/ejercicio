@@ -101,6 +101,25 @@ export const LB_TO_KG = 0.45359237;
 export function lbToKg(lb) { return round(num(lb) * LB_TO_KG, 2); }
 export function kgToLb(kg) { return round(num(kg) / LB_TO_KG, 2); }
 
+/* ---------- Discos por lado (compartido por la calculadora y la sesión) ---------- */
+// Discos habituales por unidad (de mayor a menor) y peso de barra olímpica por defecto.
+export const PLATES = { kg: [20, 15, 10, 5, 2.5, 1.25], lb: [45, 35, 25, 10, 5, 2.5] };
+export const DEFAULT_BAR = { kg: 20, lb: 45 };
+
+/** Reparte el peso de un lado en discos (algoritmo voraz). */
+export function platesPerSide(target, bar, plates) {
+  const perSide = round((target - bar) / 2, 2);
+  if (perSide <= 0) return { list: [], leftover: 0, perSide };
+  const list = [];
+  let rem = perSide;
+  for (const p of plates) {
+    let count = 0;
+    while (rem >= p - 1e-9) { rem = round(rem - p, 2); count++; }
+    if (count) list.push({ plate: p, count });
+  }
+  return { list, leftover: round(rem, 2), perSide };
+}
+
 /* ---------- DOM helpers ---------- */
 export function el(html) {
   const tpl = document.createElement('template');

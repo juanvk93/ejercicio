@@ -2,31 +2,13 @@
    calculator.js — Herramientas: conversión lb⇄kg y discos por lado.
    ============================================================ */
 
-import { el, esc, num, round, lbToKg, kgToLb, fmtNum } from '../utils.js';
+import { el, esc, num, round, lbToKg, kgToLb, fmtNum, PLATES, DEFAULT_BAR, platesPerSide } from '../utils.js';
 import { unitLabel } from '../prefs.js';
 import { epley1RM } from '../store.js';
 
 // Porcentajes del 1RM mostrados en la tabla y rampa de calentamiento (% del peso de trabajo).
 const RM_PERCENTS = [100, 95, 90, 85, 80, 75, 70, 65, 60, 50];
 const WARMUP = [{ pct: 40, reps: 5 }, { pct: 55, reps: 3 }, { pct: 70, reps: 2 }, { pct: 85, reps: 1 }];
-
-// Discos habituales por unidad (de mayor a menor) y peso de barra olímpica por defecto.
-const PLATES = { kg: [20, 15, 10, 5, 2.5, 1.25], lb: [45, 35, 25, 10, 5, 2.5] };
-const DEFAULT_BAR = { kg: 20, lb: 45 };
-
-/** Reparte el peso de un lado en discos (algoritmo voraz). */
-function platesPerSide(target, bar, plates) {
-  const perSide = round((target - bar) / 2, 2);
-  if (perSide <= 0) return { list: [], leftover: 0, perSide };
-  const list = [];
-  let rem = perSide;
-  for (const p of plates) {
-    let count = 0;
-    while (rem >= p - 1e-9) { rem = round(rem - p, 2); count++; }
-    if (count) list.push({ plate: p, count });
-  }
-  return { list, leftover: round(rem, 2), perSide };
-}
 
 export async function calculator() {
   const node = el('<div></div>');

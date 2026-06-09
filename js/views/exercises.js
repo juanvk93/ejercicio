@@ -139,6 +139,11 @@ async function openForm(ex) {
         <div class="chip-grid" id="known-tags" style="margin-top:8px"></div>
       </div>
       <div class="field">
+        <label>Patrón de movimiento</label>
+        <div class="chip-grid" id="sel-move"></div>
+        <span class="faint" style="font-size:12px">Para el informe de equilibrio muscular (empuje/tirón y tren superior/inferior).</span>
+      </div>
+      <div class="field">
         <label class="row between" for="f-uni" style="cursor:pointer">
           <span>Unilateral (un brazo/pierna cada vez)</span>
           <input type="checkbox" id="f-uni" ${ex?.unilateral ? 'checked' : ''}>
@@ -155,6 +160,23 @@ async function openForm(ex) {
   const selHost = content.querySelector('#sel-tags');
   const knownHost = content.querySelector('#known-tags');
   const tagInput = content.querySelector('#f-tag');
+
+  // Patrón de movimiento (empuje/tirón/pierna/ninguno) — selección única.
+  const MOVES = [
+    { v: 'push', l: 'Empuje' }, { v: 'pull', l: 'Tirón' },
+    { v: 'legs', l: 'Pierna' }, { v: '', l: 'Ninguno' },
+  ];
+  const moveHost = content.querySelector('#sel-move');
+  let movement = ['push', 'pull', 'legs'].includes(ex?.movement) ? ex.movement : '';
+  function renderMove() {
+    moveHost.innerHTML = '';
+    for (const m of MOVES) {
+      const chip = el(`<button class="chip ${movement === m.v ? 'selected' : ''}" type="button">${esc(m.l)}</button>`);
+      chip.onclick = () => { movement = m.v; renderMove(); };
+      moveHost.appendChild(chip);
+    }
+  }
+  renderMove();
 
   function renderTags() {
     // Etiquetas seleccionadas (con × para quitar).
@@ -194,6 +216,7 @@ async function openForm(ex) {
       name,
       tags: [...selectedTags],
       unilateral: content.querySelector('#f-uni').checked,
+      movement,
       notes: content.querySelector('#f-notes').value,
     });
     toast(isEdit ? 'Ejercicio actualizado' : 'Ejercicio creado', 'success');

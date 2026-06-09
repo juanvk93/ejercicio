@@ -119,12 +119,28 @@ function registerSW() {
   }).catch((e) => console.warn('SW no registrado', e));
 }
 
+/* ---------------- Almacenamiento persistente ----------------
+   Marca los datos como "no desalojables" por el navegador (clave en iOS/Safari, que
+   puede borrar IndexedDB de PWAs poco usadas). Silencioso; algunos navegadores lo
+   conceden por heurística (app instalada, uso frecuente…). */
+function requestPersistentStorage() {
+  try {
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persisted()
+        .then((p) => { if (!p) navigator.storage.persist(); })
+        .catch(() => {});
+    }
+  } catch (e) { /* ignorar */ }
+}
+
 /* ---------------- Arranque ---------------- */
 async function init() {
   setTheme(getTheme());
   setAccent(getAccent());
+  requestPersistentStorage();
   await store.seedIfEmpty();
   await store.migrate();
+  await store.seedAchievementBaseline(); // base para avisar de logros nuevos
   startRouter();
   syncTabbar();
   registerSW();

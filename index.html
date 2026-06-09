@@ -29,6 +29,17 @@
     })();
   </script>
 
+  <!-- Captura el prompt de instalación (Android/Chrome) lo antes posible; Ajustes lo usa. -->
+  <script>
+    window.__deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      window.__deferredInstallPrompt = e;
+      window.dispatchEvent(new CustomEvent('gt:installprompt'));
+    });
+    window.addEventListener('appinstalled', function () { window.__deferredInstallPrompt = null; });
+  </script>
+
   <link rel="stylesheet" href="./css/styles.css" />
 </head>
 <body>

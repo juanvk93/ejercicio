@@ -338,7 +338,7 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary)
   color: var(--text-faint); font-weight: 700; padding: 4px 6px; text-align: center;
 }
 .sets-table td { padding: 4px 4px; text-align: center; }
-.sets-table .set-idx { color: var(--text-faint); font-weight: 700; width: 30px; }
+.sets-table .set-idx { color: var(--text-faint); font-weight: 700; width: 38px; }
 .sets-table .prev-cell { color: var(--text-faint); font-size: 13px; white-space: nowrap; }
 .set-done-btn {
   width: 36px; height: 36px; border-radius: 50%;
@@ -349,6 +349,16 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary)
 .set-row.done td .input-inline { opacity: 0.7; }
 .sets-table .set-rpe { width: 52px; }
 .sets-table .set-rpe .input-inline { padding: 10px 2px; }
+
+/* Botón de tipo de serie (en la celda del nº): normal · calentamiento (W) · fallo · drop (D) */
+.set-type-btn {
+  min-width: 28px; height: 28px; padding: 0 6px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg-elev-2);
+  color: var(--text-dim); font-weight: 700; font-size: 13px; cursor: pointer;
+}
+.set-type-btn.st-warmup { color: var(--warning); border-color: var(--warning); }
+.set-type-btn.st-failure { color: var(--danger); border-color: var(--danger); }
+.set-type-btn.st-drop { color: var(--primary); border-color: var(--primary); }
 
 /* Ejercicio enlazado en superserie con el siguiente */
 .card.superset-linked { border-left: 3px solid var(--primary); }

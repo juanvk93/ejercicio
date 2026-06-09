@@ -5,6 +5,49 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
 ## [Sin publicar]
 
+## [1.2.0] - 2026-06-09
+
+### Añadido
+- **Almacenamiento persistente:** al arrancar se solicita `navigator.storage.persist()` para que
+  el navegador no borre los datos (clave en iOS). En Ajustes → Aplicación se ve el estado y se
+  puede activar a mano. (`js/app.js`, `js/views/settings.js`)
+- **Instalar app:** Ajustes → Aplicación ofrece "Instalar app" (Android/Chrome, vía
+  `beforeinstallprompt`) e instrucciones para iOS ("Compartir → Añadir a inicio").
+  (`index.html`, `js/views/settings.js`)
+- **Aviso de logro desbloqueado:** al finalizar una sesión, si se desbloquean logros nuevos aparece
+  un modal celebratorio. Se guarda la base de logros conseguidos en `localStorage`.
+  (`js/store.js` → `syncAchievements`/`seedAchievementBaseline`/`resetAchievementBaseline`,
+  `js/views/session.js`, `js/app.js`)
+- **Reto de la semana:** en Inicio, sesiones de la semana en curso frente a un objetivo (días
+  planificados o 3 por defecto), con barra. (`js/store.js` → `weeklyGoal`, `js/views/home.js`)
+- **Tipos de serie (calentamiento / normal / fallo / drop):** se cambian tocando el número de la
+  serie. Los **calentamientos no cuentan** como volumen ni serie efectiva en ninguna estadística
+  (sí 'fallo' y 'drop'); la numeración muestra W/D. (`js/views/session.js`, `js/store.js` →
+  `isWorkingSet` y todos los cálculos)
+- **Menú de opciones por ejercicio (engranaje):** agrupa progresión de peso, **calculadora de
+  discos** y **notas del ejercicio** (persistentes, en su definición) sin recargar la vista de la
+  sesión. (`js/views/session.js`, `js/utils.js` → `platesPerSide`/`PLATES`/`DEFAULT_BAR`)
+- **Fuerza relativa:** en Informes, peso máximo de cada ejercicio respecto al peso corporal actual
+  (× peso). (`js/store.js` → `relativeStrength`, `js/views/reports.js`)
+- **Plantillas de rutina y semana de descarga:** en el Planificador se puede guardar la semana como
+  plantilla y aplicar plantillas guardadas, y marcar la semana como descarga (deload) con aviso en
+  Inicio. (`js/store.js` → `listRoutines`/`saveRoutine`/`deleteRoutine`/`applyRoutine`/
+  `isDeloadWeek`/`setDeloadWeek`, `js/views/planner.js`, `js/views/home.js`)
+- **Patrón de movimiento por ejercicio (empuje/tirón/pierna):** nuevo campo en el editor de
+  ejercicios. El informe **Equilibrio muscular** se alimenta de este campo explícito en lugar de
+  adivinar por palabras clave en las etiquetas. Los ejercicios antiguos se siembran una vez
+  infiriendo el patrón de sus etiquetas (corregible después). (`js/store.js` → `saveExercise`,
+  `exerciseMovement`, `migrate`, `muscleBalance`; `js/views/exercises.js`, `js/views/reports.js`)
+
+### Cambiado
+- **Informe "Equilibrio muscular" más claro:** cada barra lleva ahora un título ("Empuje vs Tirón",
+  "Tren superior vs inferior"); se ocultan las barras sin datos y el volumen no clasificado invita
+  a asignar el patrón de movimiento. Ya no se usa la clasificación por palabras clave ni la
+  categoría "core". (`js/views/reports.js`, `js/store.js`)
+- La lógica de **discos por lado** se movió a `js/utils.js` (`platesPerSide`, `PLATES`,
+  `DEFAULT_BAR`) para compartirla entre la calculadora y la sesión. (`js/views/calculator.js`)
+- Caché del Service Worker subida a `gym-tracker-v41`. (`service-worker.js`)
+
 ## [1.1.0] - 2026-06-09
 
 ### Añadido

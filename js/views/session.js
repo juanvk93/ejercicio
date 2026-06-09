@@ -5,7 +5,7 @@
    ============================================================ */
 
 import { el, esc, num, round, fmtDate, fmtTime, fmtDuration, fmtClock, fmtNum, toast, confirmDialog, showModal,
-  tsFromDateTime, dateInputValue, timeInputValue } from '../utils.js';
+  tsFromDateTime, dateInputValue, timeInputValue, PLATES, DEFAULT_BAR, platesPerSide } from '../utils.js';
 import { navigate } from '../router.js';
 import { unitLabel, getUnit } from '../prefs.js';
 import * as store from '../store.js';
@@ -40,8 +40,10 @@ export async function session(ctx) {
   // Contexto compartido con las filas de series (PR/objetivo en vivo + arranque del descanso).
   const sctx = {
     onSetDone(ex, set) {
-      celebratePR(ex, set, prMap);
-      celebrateGoals(ex, set, goalMap);
+      if (set.type !== 'warmup') { // los calentamientos no son récord ni objetivo
+        celebratePR(ex, set, prMap);
+        celebrateGoals(ex, set, goalMap);
+      }
       if (restBar) restBar.start();
     },
   };
@@ -113,8 +115,10 @@ export async function session(ctx) {
     s.status = 'finished';
     s.finishedAt = Date.now();
     await store.saveSession(s);
+    const newly = await store.syncAchievements();
     toast('¡Sesión finalizada!', 'success');
     navigate(`#/session/${s.id}/summary`);
+    if (newly.length) showAchievementUnlock(newly);
   };
   actions.querySelector('#cancel-session').onclick = async () => {
     if (await confirmDialog('¿Descartar esta sesión? Se perderán los datos registrados.', { okText: 'Descartar' })) {
@@ -181,6 +185,24 @@ export async function repeatSession(past) {
   await store.saveSession(ns);
   toast('Entreno repetido: ¡a darle!', 'success');
   navigate(`#/session/${ns.id}`);
+}
+
+/** Modal celebratorio cuando se desbloquean logros al finalizar la sesión. */
+function showAchievementUnlock(list) {
+  const items = list.map((a) => `
+    <div class="row" style="gap:12px;align-items:center;margin-bottom:8px">
+      <span class="av av-lg" style="font-size:22px">${a.icon}</span>
+      <div><div style="font-weight:700">${esc(a.title)}</div><div class="sub muted">${esc(a.desc)}</div></div>
+    </div>`).join('');
+  const content = el(`
+    <div class="center">
+      <div style="font-size:42px;line-height:1">🎉</div>
+      <p class="muted" style="margin:6px 0 14px">${list.length === 1 ? 'Has desbloqueado un logro' : `Has desbloqueado ${list.length} logros`}</p>
+      <div style="text-align:left">${items}</div>
+      <button class="btn primary block mt" data-act="ver">Ver logros</button>
+    </div>`);
+  const { close } = showModal('¡Logro desbloqueado!', content);
+  content.querySelector('[data-act="ver"]').onclick = () => { close(); navigate('#/achievements'); };
 }
 
 /* ---------------- Récord personal en vivo ---------------- */
@@ -412,6 +434,9 @@ function renderExercise(s, ex, exIdx, sctx) {
         ${badges.length ? `<div class="row wrap" style="gap:6px;margin-top:6px">${badges.join('')}</div>` : ''}
       </div>
       <div class="row" style="gap:2px;flex-shrink:0">
+        <button class="icon-btn" data-act="opts" aria-label="Opciones del ejercicio" title="Opciones: progresión, discos y notas" style="width:34px;height:34px">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
         ${isLast ? '' : `<button class="icon-btn" data-act="superset" aria-label="Superserie con el siguiente" title="Superserie con el siguiente" style="width:34px;height:34px;${ex.supersetNext ? 'color:var(--primary)' : ''}">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>
         </button>`}
@@ -443,36 +468,21 @@ function renderExercise(s, ex, exIdx, sctx) {
 
   function renderRows() {
     tbody.innerHTML = '';
-    ex.sets.forEach((set, i) => tbody.appendChild(renderSetRow(s, ex, set, i, renderRows, sctx)));
+    // Numeración solo de las series de trabajo (los calentamientos muestran "W").
+    let workNo = 0;
+    ex.sets.forEach((set, i) => {
+      if (set.type !== 'warmup') workNo++;
+      const label = set.type === 'warmup' ? 'W' : (set.type === 'drop' ? 'D' : String(workNo));
+      tbody.appendChild(renderSetRow(s, ex, set, i, label, renderRows, sctx));
+    });
   }
 
-  if (ex.previous) {
-    const hasWeight = (ex.previous.sets || []).some((st) => num(st.weight) > 0);
-    const row = el(`
-      <div class="row between" style="gap:8px;margin-bottom:10px">
-        <div class="sub faint">Última vez · ${fmtDate(ex.previous.date)}</div>
-      </div>`);
-    if (hasWeight) {
-      // Progresión automática: sube el peso de la última vez un escalón (sobrecarga progresiva).
-      const step = getUnit() === 'lb' ? 5 : 2.5;
-      const btn = el(`<button class="chip" type="button" style="padding:4px 10px;font-size:12px;white-space:nowrap">📈 +${fmtNum(step)} ${esc(unitLabel())}</button>`);
-      btn.onclick = () => {
-        ex.sets.forEach((set, i) => {
-          const pv = ex.previous.sets[i];
-          const base = pv ? num(pv.weight) : num(set.weight);
-          set.weight = round(base + step, 2);
-          set.done = false;
-        });
-        renderRows();
-        autosave(s);
-        toast(`Sugerencia aplicada: +${fmtNum(step)} ${unitLabel()}`, 'success');
-      };
-      row.appendChild(btn);
-    }
-    card.appendChild(row);
-  } else {
-    card.appendChild(el(`<div class="sub faint" style="margin-bottom:10px">Primera vez con este ejercicio</div>`));
-  }
+  // Las opciones por ejercicio (progresión, discos, notas) viven en el menú del engranaje.
+  head.querySelector('[data-act="opts"]').onclick = () => openExerciseOptions(s, ex, renderRows);
+
+  card.appendChild(el(ex.previous
+    ? `<div class="sub faint" style="margin-bottom:10px">Última vez · ${fmtDate(ex.previous.date)}</div>`
+    : `<div class="sub faint" style="margin-bottom:10px">Primera vez con este ejercicio</div>`));
 
   const table = el(`
     <table class="sets-table">
@@ -543,13 +553,16 @@ function openSchemeModal(s, ex, renderRows) {
   }
 }
 
-function renderSetRow(s, ex, set, i, renderRows, sctx) {
+/* Ciclo de tipos al tocar el nº de serie: normal → calentamiento → fallo → drop → normal. */
+const SET_TYPE_CYCLE = ['normal', 'warmup', 'failure', 'drop'];
+
+function renderSetRow(s, ex, set, i, label, renderRows, sctx) {
   const prev = ex.previous && ex.previous.sets[i]
     ? `${fmtNum(ex.previous.sets[i].reps)}×${fmtNum(ex.previous.sets[i].weight)}`
     : '—';
   const tr = el(`
     <tr class="set-row ${set.done ? 'done' : ''}">
-      <td class="set-idx">${i + 1}</td>
+      <td class="set-idx"><button type="button" class="set-type-btn st-${set.type || 'normal'}" data-act="type" title="Tipo de serie (toca para cambiar): normal · calentamiento · fallo · drop">${esc(label)}</button></td>
       <td class="prev-cell">${prev}</td>
       <td><input class="input-inline" type="number" inputmode="numeric" min="0" step="1" value="${set.reps || ''}" placeholder="0" data-f="reps"></td>
       <td><input class="input-inline" type="number" inputmode="decimal" min="0" step="0.5" value="${set.weight || ''}" placeholder="0" data-f="weight"></td>
@@ -574,6 +587,12 @@ function renderSetRow(s, ex, set, i, renderRows, sctx) {
     if (v === '') delete set.rpe; else set.rpe = num(v);
     autosave(s);
   };
+  tr.querySelector('[data-act="type"]').onclick = () => {
+    const next = SET_TYPE_CYCLE[(SET_TYPE_CYCLE.indexOf(set.type || 'normal') + 1) % SET_TYPE_CYCLE.length];
+    if (next === 'normal') delete set.type; else set.type = next;
+    renderRows(); // recalcula numeración (W/D/nº) y el estilo del botón
+    autosave(s);
+  };
   tr.querySelector('[data-act="done"]').onclick = () => {
     set.done = !set.done;
     tr.classList.toggle('done', set.done);
@@ -588,6 +607,93 @@ function renderSetRow(s, ex, set, i, renderRows, sctx) {
     autosave(s);
   };
   return tr;
+}
+
+/**
+ * Menú de opciones de un ejercicio (engranaje): progresión de peso, calculadora de discos
+ * y notas. Las notas se guardan en la DEFINICIÓN del ejercicio (persisten entre sesiones).
+ */
+async function openExerciseOptions(s, ex, renderRows) {
+  const u = unitLabel();
+  const def = await store.getExercise(ex.exerciseId); // para las notas persistentes
+  const hasPrevWeight = ex.previous && (ex.previous.sets || []).some((st) => num(st.weight) > 0);
+  const step = getUnit() === 'lb' ? 5 : 2.5;
+  const topW = (ex.sets || []).reduce((m, st) => Math.max(m, num(st.weight)), 0);
+  const plates = PLATES[u] || PLATES.kg;
+
+  const content = el(`
+    <div>
+      ${hasPrevWeight ? `
+      <div class="field">
+        <label>Progresión</label>
+        <button class="btn ghost block" id="o-progress">📈 Subir +${fmtNum(step)} ${esc(u)} sobre la última vez</button>
+      </div>` : ''}
+      <div class="field">
+        <label>Calculadora de discos</label>
+        <div class="row" style="gap:10px">
+          <div class="field grow" style="margin:0"><label>Objetivo (${esc(u)})</label>
+            <input class="input" type="number" inputmode="decimal" step="0.5" min="0" id="o-target" value="${topW || ''}" placeholder="0"></div>
+          <div class="field" style="width:110px;margin:0"><label>Barra (${esc(u)})</label>
+            <input class="input" type="number" inputmode="decimal" step="0.5" min="0" id="o-bar" value="${DEFAULT_BAR[u] || 20}"></div>
+        </div>
+        <div id="o-plates" class="mt"></div>
+      </div>
+      ${def ? `
+      <div class="field" style="margin-bottom:0">
+        <label>Notas del ejercicio</label>
+        <textarea class="input" id="o-notes" rows="2" placeholder="Agarre, ajustes de máquina, técnica…">${esc(def.notes || '')}</textarea>
+        <span class="faint" style="font-size:12px">Se guardan en el ejercicio y se ven cada vez que lo entrenes.</span>
+      </div>` : ''}
+    </div>`);
+
+  const { close } = showModal(ex.name, content);
+
+  // Progresión
+  const progBtn = content.querySelector('#o-progress');
+  if (progBtn) progBtn.onclick = () => {
+    ex.sets.forEach((set, i) => {
+      const pv = ex.previous.sets[i];
+      const base = pv ? num(pv.weight) : num(set.weight);
+      set.weight = round(base + step, 2);
+      set.done = false;
+    });
+    renderRows();
+    autosave(s);
+    close();
+    toast(`Sugerencia aplicada: +${fmtNum(step)} ${u}`, 'success');
+  };
+
+  // Calculadora de discos (reutiliza la lógica de utils)
+  const tInput = content.querySelector('#o-target');
+  const bInput = content.querySelector('#o-bar');
+  const out = content.querySelector('#o-plates');
+  const renderPlates = () => {
+    out.innerHTML = '';
+    const target = num(tInput.value), bar = num(bInput.value);
+    if (!target) { out.appendChild(el('<div class="faint" style="font-size:13px">Introduce el peso objetivo.</div>')); return; }
+    const { list, leftover, perSide } = platesPerSide(target, bar, plates);
+    if (perSide < 0) { out.appendChild(el('<div class="faint" style="font-size:13px">El objetivo es menor que la barra.</div>')); return; }
+    if (perSide === 0) { out.appendChild(el('<div style="font-weight:700">Solo la barra, sin discos.</div>')); return; }
+    out.appendChild(el(`<div class="faint" style="font-size:12px;margin-bottom:8px">Por cada lado · ${fmtNum(perSide)} ${esc(u)}:</div>`));
+    const chips = list.map(({ plate, count }) => `<span class="tag" style="font-size:14px;padding:6px 12px">${count} × ${fmtNum(plate)}</span>`).join(' ');
+    out.appendChild(el(`<div class="row" style="flex-wrap:wrap;gap:8px">${chips || '<span class="faint">No caben discos.</span>'}</div>`));
+    if (leftover > 0) out.appendChild(el(`<div class="faint mt" style="font-size:12px">No exacto: sobran ${fmtNum(leftover)} ${esc(u)} por lado.</div>`));
+  };
+  tInput.oninput = renderPlates;
+  bInput.oninput = renderPlates;
+  renderPlates();
+
+  // Notas (se guardan en la definición del ejercicio al cambiar el foco)
+  const notesEl = content.querySelector('#o-notes');
+  if (notesEl && def) {
+    notesEl.onchange = async () => {
+      const val = notesEl.value;
+      if ((def.notes || '') === val) return;
+      await store.saveExercise({ id: def.id, name: def.name, tags: def.tags, unilateral: def.unilateral, movement: def.movement, notes: val });
+      def.notes = val;
+      toast('Notas guardadas', 'success');
+    };
+  }
 }
 
 /* ---------------- Edición de una sesión finalizada ---------------- */

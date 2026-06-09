@@ -67,6 +67,7 @@ export async function reports() {
   const exercises = await store.listExercises();
   const prs = await store.personalRecords(); // siempre sobre todo el histórico
   const tags = await store.allTags();
+  const relStr = await store.relativeStrength(); // fuerza relativa (peso máx ÷ peso corporal)
 
   // ---- Filtro de periodo (toggle horizontal)
   const toggle = el(`<div class="period-toggle mb">${PERIODS.map((p) =>
@@ -195,16 +196,19 @@ export async function reports() {
         content.appendChild(card);
       }
 
-      // ---- Equilibrio muscular (empuje/tirón y superior/inferior)
-      const balTotal = balance.push + balance.pull + balance.legs + balance.core + balance.other;
+      // ---- Equilibrio muscular (empuje/tirón y tren superior/inferior), según el
+      //      patrón de movimiento que el usuario asigna a cada ejercicio.
+      const balTotal = balance.push + balance.pull + balance.legs + balance.other;
       if (balTotal > 0) {
         content.appendChild(el('<div class="section-title">Equilibrio muscular</div>'));
         const card = el('<div class="card"></div>');
-        const pairBar = (la, va, lb, vb) => {
+        // Barra de dos lados con su título; muestra el % de volumen de cada lado.
+        const pairBar = (title, la, va, lb, vb) => {
           const tot = va + vb;
           const pa = tot > 0 ? Math.round((va / tot) * 100) : 50;
           return `
             <div style="margin-bottom:14px">
+              <div class="faint" style="font-size:12px;margin-bottom:4px">${title}</div>
               <div class="row between" style="font-size:13px;margin-bottom:5px">
                 <span style="font-weight:700">${la} · ${pa}%</span>
                 <span style="font-weight:700">${100 - pa}% · ${lb}</span>
@@ -215,10 +219,16 @@ export async function reports() {
               </div>
             </div>`;
         };
-        card.innerHTML = pairBar('Empuje', balance.push, 'Tirón', balance.pull)
-          + pairBar('Sup.', balance.push + balance.pull, 'Inf.', balance.legs);
+        let html = '';
+        if (balance.push + balance.pull > 0) {
+          html += pairBar('Empuje vs Tirón', 'Empuje', balance.push, 'Tirón', balance.pull);
+        }
+        if (balance.push + balance.pull + balance.legs > 0) {
+          html += pairBar('Tren superior vs inferior', 'Superior', balance.push + balance.pull, 'Inferior', balance.legs);
+        }
+        card.innerHTML = html;
         if (balance.other > 0) {
-          card.appendChild(el(`<div class="faint" style="font-size:12px">Otros (sin clasificar): ${fmtNum(balance.other)} ${esc(u)}</div>`));
+          card.appendChild(el(`<div class="faint" style="font-size:12px">Sin clasificar: ${fmtNum(balance.other)} ${esc(u)} · asigna empuje/tirón/pierna a esos ejercicios.</div>`));
         }
         content.appendChild(card);
       }
@@ -273,6 +283,21 @@ export async function reports() {
         }
       }
       fillPRs();
+      content.appendChild(card);
+    }
+
+    // ---- Fuerza relativa (peso máximo ÷ peso corporal)
+    if (relStr && relStr.items.length) {
+      content.appendChild(el('<div class="section-title">Fuerza relativa</div>'));
+      const card = el('<div class="card"></div>');
+      card.appendChild(el(`<div class="faint" style="font-size:12px;margin-bottom:10px">Peso máximo respecto a tu peso corporal (${fmtNum(relStr.bodyweight)} ${esc(u)}).</div>`));
+      for (const it of relStr.items.slice(0, 10)) {
+        card.appendChild(el(`
+          <div class="pr-item row between">
+            <span style="font-weight:700">${esc(it.name)}</span>
+            <span class="muted">${fmtNum(it.topWeight)} ${esc(u)} · <b style="color:var(--text)">${fmtNum(it.ratio)}×</b></span>
+          </div>`));
+      }
       content.appendChild(card);
     }
 

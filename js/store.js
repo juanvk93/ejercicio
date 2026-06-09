@@ -16,12 +16,13 @@ export async function listExercises() {
 }
 export function getExercise(id) { return db.get(STORES.EXERCISES, id); }
 
-export function saveExercise({ id, name, tags = [], unilateral = false, notes = '' }) {
+export function saveExercise({ id, name, tags = [], unilateral = false, notes = '', movement = '' }) {
   const ex = {
     id: id || uid(),
     name: name.trim(),
     tags: (tags || []).map((t) => String(t).trim()).filter(Boolean),
     unilateral: !!unilateral, // un brazo/pierna cada vez → el volumen cuenta el doble
+    movement: ['push', 'pull', 'legs'].includes(movement) ? movement : '', // para el equilibrio muscular
     notes: notes.trim(),
     updatedAt: Date.now(),
   };
@@ -35,6 +36,11 @@ export function exerciseTags(ex) {
   return [];
 }
 
+/** Patrón de movimiento del ejercicio: 'push' | 'pull' | 'legs' | '' (sin clasificar). */
+export function exerciseMovement(ex) {
+  return ['push', 'pull', 'legs'].includes(ex?.movement) ? ex.movement : '';
+}
+
 /** Todas las etiquetas existentes, ordenadas. */
 export async function allTags() {
   const exs = await db.getAll(STORES.EXERCISES);
@@ -43,16 +49,23 @@ export async function allTags() {
   return [...set].sort((a, b) => a.localeCompare(b, 'es'));
 }
 
-/** Migra datos antiguos: `muscle` (texto) → `tags` (array); elimina `unit` por ejercicio. */
+/**
+ * Migra datos antiguos: `muscle` (texto) → `tags` (array); elimina `unit` por ejercicio;
+ * y siembra el patrón de movimiento (`movement`) inferido de las etiquetas la primera vez
+ * (el usuario lo corrige luego en el ejercicio).
+ */
 export async function migrate() {
   const exs = await db.getAll(STORES.EXERCISES);
   for (const e of exs) {
+    let changed = false;
     if (!Array.isArray(e.tags)) {
       e.tags = e.muscle ? [e.muscle] : [];
       delete e.muscle;
       delete e.unit;
-      await db.put(STORES.EXERCISES, e);
+      changed = true;
     }
+    if (e.movement === undefined) { e.movement = inferMovement(exerciseTags(e)); changed = true; }
+    if (changed) await db.put(STORES.EXERCISES, e);
   }
 }
 
@@ -130,7 +143,7 @@ export async function getLastExerciseRecord(exerciseId, excludeSessionId = null)
     if (s.status !== 'finished') continue;
     const found = (s.exercises || []).find((e) => e.exerciseId === exerciseId);
     if (found && found.sets && found.sets.length) {
-      return { date: s.startedAt, sets: found.sets.map((st) => ({ reps: st.reps, weight: st.weight })) };
+      return { date: s.startedAt, sets: found.sets.map((st) => ({ reps: st.reps, weight: st.weight, type: st.type })) };
     }
   }
   return null;
@@ -151,7 +164,7 @@ export async function buildSessionExercises(exerciseIds, existingIds = new Set()
     const last = await getLastExerciseRecord(exId);
     // Series iniciales: copia de la última vez, o una serie vacía.
     const baseSets = last && last.sets.length
-      ? last.sets.map((s) => ({ reps: s.reps, weight: s.weight, done: false }))
+      ? last.sets.map((s) => ({ reps: s.reps, weight: s.weight, ...(s.type ? { type: s.type } : {}), done: false }))
       : [{ reps: 0, weight: 0, done: false }];
     result.push({
       exerciseId: exId,
@@ -371,6 +384,15 @@ export function epley1RM(weight, reps) {
   return r === 1 ? w : round(w * (1 + r / 30), 1);
 }
 
+/**
+ * Serie "de trabajo": tiene datos (reps o peso) y NO es de calentamiento. Las series de
+ * calentamiento (`type:'warmup'`) no cuentan como volumen ni como serie efectiva en ningún
+ * cálculo. Los tipos 'failure' (al fallo) y 'drop' sí cuentan como trabajo.
+ */
+function isWorkingSet(st) {
+  return !!st && st.type !== 'warmup' && (num(st.reps) > 0 || num(st.weight) > 0);
+}
+
 /** Estadísticas de una única sesión. */
 export function sessionStats(session) {
   let totalSets = 0, totalReps = 0, totalVolume = 0;
@@ -379,7 +401,7 @@ export function sessionStats(session) {
   for (const ex of session.exercises || []) {
     // Unilateral: se hace con ambos lados, así que el volumen cuenta el doble.
     const factor = ex.unilateral ? 2 : 1;
-    const counted = (ex.sets || []).filter((s) => num(s.reps) > 0 || num(s.weight) > 0);
+    const counted = (ex.sets || []).filter(isWorkingSet);
     let vol = 0, reps = 0, topWeight = 0;
     for (const s of counted) {
       const r = num(s.reps), w = num(s.weight);
@@ -411,7 +433,7 @@ export async function exerciseProgress(exerciseId, { since = null } = {}) {
   for (const s of sessions) {
     const ex = (s.exercises || []).find((e) => e.exerciseId === exerciseId);
     if (!ex) continue;
-    const counted = (ex.sets || []).filter((st) => num(st.reps) > 0 || num(st.weight) > 0);
+    const counted = (ex.sets || []).filter(isWorkingSet);
     if (!counted.length) continue;
     const factor = ex.unilateral ? 2 : 1;
     let vol = 0, top = 0, best1RM = 0;
@@ -438,7 +460,7 @@ export async function exerciseHistory(exerciseId) {
   for (const s of sessions) {
     const ex = (s.exercises || []).find((e) => e.exerciseId === exerciseId);
     if (!ex) continue;
-    const counted = (ex.sets || []).filter((st) => num(st.reps) > 0 || num(st.weight) > 0);
+    const counted = (ex.sets || []).filter(isWorkingSet);
     if (!counted.length) continue;
     const factor = ex.unilateral ? 2 : 1;
     let vol = 0, top = 0, rm = 0, reps = 0;
@@ -510,7 +532,7 @@ export async function volumeByTag({ since = null } = {}) {
   for (const s of sessions) {
     for (const ex of s.exercises || []) {
       const factor = ex.unilateral ? 2 : 1;
-      const counted = (ex.sets || []).filter((st) => num(st.reps) > 0 || num(st.weight) > 0);
+      const counted = (ex.sets || []).filter(isWorkingSet);
       if (!counted.length) continue;
       let vol = 0, reps = 0;
       for (const st of counted) { vol += num(st.reps) * num(st.weight) * factor; reps += num(st.reps); }
@@ -606,7 +628,7 @@ export async function personalRecords() {
     for (const ex of s.exercises || []) {
       for (const st of ex.sets || []) {
         const w = num(st.weight), r = num(st.reps);
-        if (w <= 0 || r <= 0) continue;
+        if (st.type === 'warmup' || w <= 0 || r <= 0) continue; // los calentamientos no cuentan
         let rec = map.get(ex.exerciseId);
         if (!rec) {
           rec = { exerciseId: ex.exerciseId, name: ex.name, tags: tagMap.get(ex.exerciseId) || [], topWeight: null, bestSet: null, best1RM: null };
@@ -638,7 +660,7 @@ export async function weeklySetsByTag() {
   const agg = new Map();
   for (const s of sessions) {
     for (const ex of s.exercises || []) {
-      const counted = (ex.sets || []).filter((st) => num(st.reps) > 0 || num(st.weight) > 0);
+      const counted = (ex.sets || []).filter(isWorkingSet);
       if (!counted.length) continue;
       const tags = tagMap.get(ex.exerciseId) || [];
       const keys = tags.length ? tags : ['Sin etiqueta'];
@@ -648,47 +670,46 @@ export async function weeklySetsByTag() {
   return [...agg.entries()].map(([tag, sets]) => ({ tag, sets })).sort((a, b) => b.sets - a.sets);
 }
 
-/* Clasificación de etiquetas en categorías (sin acentos, en minúsculas). */
-const CATEGORY_KEYWORDS = {
+/* Inferencia del patrón de movimiento a partir de las etiquetas. SOLO se usa para sembrar
+   datos antiguos en `migrate()`; las clasificaciones nuevas son explícitas (campo `movement`). */
+const MOVEMENT_KEYWORDS = {
+  legs: ['pierna', 'cuadricep', 'muslo', 'femoral', 'isquio', 'gluteo', 'gemelo', 'pantorrilla', 'sentadilla', 'aductor', 'abductor', 'cadera'],
   push: ['pecho', 'pectoral', 'hombro', 'deltoid', 'tricep', 'press', 'fondo', 'empuj'],
   pull: ['espalda', 'dorsal', 'bicep', 'antebrazo', 'remo', 'jalon', 'dominada', 'trapecio', 'tiron'],
-  legs: ['pierna', 'cuadricep', 'muslo', 'femoral', 'isquio', 'gluteo', 'gemelo', 'pantorrilla', 'sentadilla', 'aductor', 'abductor', 'cadera'],
-  core: ['abdomen', 'abdominal', 'core', 'lumbar', 'oblicuo', 'plancha'],
 };
 function deburr(s) { return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
-function categoriesForTags(tags) {
-  const cats = new Set();
-  for (const t of tags) {
-    const d = deburr(t);
-    for (const [cat, kws] of Object.entries(CATEGORY_KEYWORDS)) {
-      if (kws.some((k) => d.includes(k))) cats.add(cat);
-    }
+function inferMovement(tags) {
+  const blob = (tags || []).map(deburr).join(' ');
+  // Pierna primero: evita que "prensa/leg press" caiga en empuje por la palabra "press".
+  for (const m of ['legs', 'push', 'pull']) {
+    if (MOVEMENT_KEYWORDS[m].some((k) => blob.includes(k))) return m;
   }
-  return cats;
+  return '';
 }
 
-/** Volumen por categoría (empuje/tirón/pierna/core/otros) para detectar descompensaciones. */
+/**
+ * Volumen por patrón de movimiento (empuje/tirón/pierna/sin clasificar) para el informe de
+ * equilibrio muscular. Se basa en el campo `movement` del ejercicio (explícito, no en etiquetas).
+ * El factor ×2 de los unilaterales se respeta.
+ */
 export async function muscleBalance({ since = null } = {}) {
   const exs = await db.getAll(STORES.EXERCISES);
-  const tagMap = new Map(exs.map((e) => [e.id, exerciseTags(e)]));
+  const moveMap = new Map(exs.map((e) => [e.id, exerciseMovement(e)]));
   const sessions = await finishedSessions(since);
-  const vol = { push: 0, pull: 0, legs: 0, core: 0, other: 0 };
+  const vol = { push: 0, pull: 0, legs: 0, other: 0 };
   for (const s of sessions) {
     for (const ex of s.exercises || []) {
       const factor = ex.unilateral ? 2 : 1;
-      const counted = (ex.sets || []).filter((st) => num(st.reps) > 0 || num(st.weight) > 0);
+      const counted = (ex.sets || []).filter(isWorkingSet);
       if (!counted.length) continue;
       let v = 0;
       for (const st of counted) v += num(st.reps) * num(st.weight) * factor;
-      const cats = categoriesForTags(tagMap.get(ex.exerciseId) || []);
-      if (!cats.size) { vol.other += v; continue; }
-      for (const c of cats) vol[c] += v;
+      const m = moveMap.get(ex.exerciseId) || '';
+      if (m === 'push' || m === 'pull' || m === 'legs') vol[m] += v;
+      else vol.other += v;
     }
   }
-  return {
-    push: round(vol.push, 1), pull: round(vol.pull, 1), legs: round(vol.legs, 1),
-    core: round(vol.core, 1), other: round(vol.other, 1),
-  };
+  return { push: round(vol.push, 1), pull: round(vol.pull, 1), legs: round(vol.legs, 1), other: round(vol.other, 1) };
 }
 
 /** Serie temporal del RPE medio por sesión (solo sesiones que lo registraron). */
@@ -734,7 +755,7 @@ export async function achievements() {
       exIds.add(ex.exerciseId);
       for (const set of ex.sets || []) {
         const w = num(set.weight), r = num(set.reps);
-        if (w <= 0 || r <= 0) continue; // solo series reales (igual que en personalRecords)
+        if (set.type === 'warmup' || w <= 0 || r <= 0) continue; // solo series de trabajo reales
         if (w > maxTopWeight) maxTopWeight = w;
         const rm = epley1RM(w, r);
         if (rm > max1RM) max1RM = rm;
@@ -820,6 +841,92 @@ export async function achievements() {
     pct: a.target > 0 ? Math.min(100, Math.round((a.value / a.target) * 100)) : 0,
   }));
 }
+
+/* ---------------- Logros desbloqueados (para avisar al conseguir uno nuevo) ---------------- */
+const ACH_KEY = 'gt-achievements-unlocked';
+function readAchBaseline() { try { return JSON.parse(localStorage.getItem(ACH_KEY)); } catch (e) { return null; } }
+
+/** Fija la base de logros desbloqueados si aún no existe (sin avisar). */
+export async function seedAchievementBaseline() {
+  if (Array.isArray(readAchBaseline())) return;
+  const list = await achievements();
+  localStorage.setItem(ACH_KEY, JSON.stringify(list.filter((a) => a.unlocked).map((a) => a.id)));
+}
+
+/** Rehace la base con el estado actual (tras importar o borrar datos, para no avisar en masa). */
+export async function resetAchievementBaseline() {
+  localStorage.removeItem(ACH_KEY);
+  await seedAchievementBaseline();
+}
+
+/**
+ * Recalcula los logros, actualiza la base guardada y devuelve los **recién desbloqueados**
+ * (para celebrarlos). La primera vez (sin base) solo siembra y no devuelve nada.
+ */
+export async function syncAchievements() {
+  const list = await achievements();
+  const now = list.filter((a) => a.unlocked).map((a) => a.id);
+  const prev = readAchBaseline();
+  localStorage.setItem(ACH_KEY, JSON.stringify(now));
+  if (!Array.isArray(prev)) return [];
+  const prevSet = new Set(prev);
+  return list.filter((a) => a.unlocked && !prevSet.has(a.id));
+}
+
+/**
+ * Reto semanal: sesiones finalizadas en la semana en curso (lunes–domingo) frente a un
+ * objetivo (nº de días con grupo en el planificador, o 3 por defecto).
+ */
+export async function weeklyGoal() {
+  const days = await getPlanner();
+  const planned = days.filter((d) => Array.isArray(d) && d.length).length;
+  const target = planned || 3;
+  const start = weekStart(Date.now());
+  const sessions = await finishedSessions();
+  const done = sessions.filter((s) => weekStart(s.startedAt) === start).length;
+  return { done, target };
+}
+
+/** Fuerza relativa: mejor peso de cada ejercicio ÷ peso corporal actual. null si no hay peso. */
+export async function relativeStrength() {
+  const bw = await listBodyweight();
+  if (!bw.length) return null;
+  const bodyweight = num(bw[bw.length - 1].weight); // listBodyweight va de más antiguo a más reciente
+  if (!(bodyweight > 0)) return null;
+  const prs = await personalRecords();
+  const items = prs
+    .map((r) => ({ name: r.name, topWeight: r.topWeight.weight, ratio: round(r.topWeight.weight / bodyweight, 2) }))
+    .sort((a, b) => b.ratio - a.ratio);
+  return { bodyweight: round(bodyweight, 1), items };
+}
+
+/* ---------------- Rutinas (plantillas del planificador) y semana de descarga ----------------
+   Se guardan en el mismo store `planner`: las plantillas con id 'tpl:<uid>' y la descarga en
+   un registro aparte 'deload'. No requieren cambiar el esquema de IndexedDB. */
+const DELOAD_ID = 'deload';
+export async function listRoutines() {
+  const all = await db.getAll(STORES.PLANNER);
+  return all
+    .filter((r) => typeof r.id === 'string' && r.id.startsWith('tpl:'))
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+export function saveRoutine({ id, name, days }) {
+  const norm = Array.from({ length: 7 }, (_, i) => (Array.isArray(days[i]) ? days[i].filter(Boolean) : []));
+  return db.put(STORES.PLANNER, { id: id || ('tpl:' + uid()), name: String(name).trim() || 'Rutina', days: norm, updatedAt: Date.now() });
+}
+export function deleteRoutine(id) { return db.remove(STORES.PLANNER, id); }
+/** Aplica una plantilla: copia sus días al planificador de la semana. */
+export async function applyRoutine(id) {
+  const r = await db.get(STORES.PLANNER, id);
+  if (!r || !Array.isArray(r.days)) return false;
+  await savePlanner(r.days);
+  return true;
+}
+export async function isDeloadWeek() {
+  const r = await db.get(STORES.PLANNER, DELOAD_ID);
+  return !!(r && r.value);
+}
+export function setDeloadWeek(on) { return db.put(STORES.PLANNER, { id: DELOAD_ID, value: !!on }); }
 
 /* ---------------- Datos de ejemplo (semilla) ---------------- */
 export async function seedIfEmpty() {

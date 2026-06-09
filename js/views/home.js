@@ -20,6 +20,8 @@ export async function home() {
   const groups = await store.listGroups();
   const goalsProgress = await store.goalProgress();
   const todayGroups = active ? [] : await store.todayPlannedGroups();
+  const weekly = await store.weeklyGoal();
+  const deload = await store.isDeloadWeek();
 
   // CTA principal: si hay sesión activa, invita a continuarla (no deja iniciar otra).
   const cta = active
@@ -33,6 +35,18 @@ export async function home() {
       </button>`);
   cta.onclick = active ? () => navigate(`#/session/${active.id}`) : () => onNewSession(groups);
   node.appendChild(cta);
+
+  // Aviso de semana de descarga (deload)
+  if (deload) {
+    node.appendChild(el(`
+      <div class="card" style="margin-top:16px;border-color:var(--warning)">
+        <div class="row" style="gap:12px;align-items:center">
+          <span style="font-size:24px;line-height:1">🪶</span>
+          <div><div style="font-weight:700">Semana de descarga</div>
+            <div class="sub muted">Baja la intensidad y el volumen para recuperar.</div></div>
+        </div>
+      </div>`));
+  }
 
   // Sesión activa
   if (active) {
@@ -74,6 +88,21 @@ export async function home() {
       navigate(`#/session/${session.id}`);
     };
     node.appendChild(card);
+  }
+
+  // Reto de la semana (sesiones de la semana en curso vs objetivo)
+  {
+    const pct = weekly.target ? Math.min(100, Math.round((weekly.done / weekly.target) * 100)) : 0;
+    const doneAll = weekly.done >= weekly.target;
+    node.appendChild(el('<div class="section-title">Reto de la semana</div>'));
+    node.appendChild(el(`
+      <div class="card">
+        <div class="row between" style="font-size:14px;margin-bottom:8px">
+          <span style="font-weight:700">${doneAll ? '¡Reto cumplido! 🎉' : 'Sesiones esta semana'}</span>
+          <span class="muted">${weekly.done} / ${weekly.target}</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, pct)}%${doneAll ? ';background:var(--success)' : ''}"></div></div>
+      </div>`));
   }
 
   // Resumen de la semana (si ya hay sesiones finalizadas)

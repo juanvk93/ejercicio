@@ -176,6 +176,7 @@ export async function settings() {
       try {
         await db.importAll(data);
         await store.migrate(); // normaliza datos antiguos importados
+        await store.resetAchievementBaseline(); // evita avisar en masa de logros del backup
         // Restaura la configuración si viene en el backup.
         if (data.config) {
           if (data.config.theme) setTheme(data.config.theme);
@@ -199,10 +200,54 @@ export async function settings() {
       db.clear(db.STORES.MEASUREMENTS), db.clear(db.STORES.GOALS),
       db.clear(db.STORES.PLANNER),
     ]);
+    await store.resetAchievementBaseline();
     toast('Datos borrados', 'success');
     navigate('#/');
   };
   node.appendChild(dataCard);
+
+  // Aplicación — instalación y protección de datos
+  node.appendChild(el('<div class="section-title">Aplicación</div>'));
+  const appCard = el('<div class="card"></div>');
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (isStandalone) {
+    appCard.appendChild(el('<div class="row" style="gap:10px;align-items:center"><span style="font-size:20px">✅</span><div class="sub muted">App instalada.</div></div>'));
+  } else if (window.__deferredInstallPrompt) {
+    const btn = el('<button class="btn primary block" id="install">Instalar app</button>');
+    btn.onclick = async () => {
+      const p = window.__deferredInstallPrompt;
+      if (!p) return;
+      p.prompt();
+      try { await p.userChoice; } catch (e) { /* ignorar */ }
+      window.__deferredInstallPrompt = null;
+      btn.remove();
+    };
+    appCard.appendChild(btn);
+  } else if (isIOS) {
+    appCard.appendChild(el('<div class="sub muted">Para instalarla: pulsa <b>Compartir</b> y luego <b>Añadir a pantalla de inicio</b>.</div>'));
+  } else {
+    appCard.appendChild(el('<div class="sub muted">Instálala desde el menú del navegador ("Instalar app" / "Añadir a inicio").</div>'));
+  }
+  // Protección de datos (almacenamiento persistente)
+  if (navigator.storage && navigator.storage.persisted) {
+    let persisted = false;
+    try { persisted = await navigator.storage.persisted(); } catch (e) { persisted = false; }
+    const row = el(`<div class="row between mt" style="gap:10px;align-items:center"><div class="sub"><b>Datos protegidos:</b> <span id="persist-state">${persisted ? 'sí' : 'no'}</span></div></div>`);
+    if (!persisted) {
+      const pb = el('<button class="btn ghost" style="padding:8px 12px">Proteger</button>');
+      pb.onclick = async () => {
+        let ok = false;
+        try { ok = await navigator.storage.persist(); } catch (e) { /* ignorar */ }
+        toast(ok ? 'Datos protegidos' : 'El navegador no lo concedió aún', ok ? 'success' : '');
+        if (ok) { pb.remove(); row.querySelector('#persist-state').textContent = 'sí'; }
+      };
+      row.appendChild(pb);
+    }
+    appCard.appendChild(row);
+    appCard.appendChild(el('<div class="faint mt" style="font-size:12px">Evita que el navegador borre tus datos por falta de uso o de espacio.</div>'));
+  }
+  node.appendChild(appCard);
 
   // Acerca de — registro de cambios
   node.appendChild(el('<div class="section-title">Acerca de</div>'));
@@ -211,7 +256,7 @@ export async function settings() {
     '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/>'));
   node.appendChild(aboutList);
 
-  node.appendChild(el('<p class="faint center mt" style="font-size:12px">Gym Tracker · PWA offline · v1.1.0</p>'));
+  node.appendChild(el('<p class="faint center mt" style="font-size:12px">Gym Tracker · PWA offline · v1.2.0</p>'));
 
   return { title: 'Ajustes', back: false, node };
 }
