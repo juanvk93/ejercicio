@@ -81,7 +81,7 @@ export async function exercises() {
       const exTags = store.exerciseTags(ex);
       const tagChips = exTags.map((t) => `<span class="tag">${esc(t)}</span>`).join('');
       const uniBadge = ex.unilateral
-        ? `<span class="badge"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7L4 11l4 4M16 7l4 4-4 4M4 11h16"/></svg>Unilateral ×2</span>`
+        ? `<span class="badge"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7L4 11l4 4M16 7l4 4-4 4M4 11h16"/></svg>Unilateral</span>`
         : '';
       const item = el(`
         <div class="item">

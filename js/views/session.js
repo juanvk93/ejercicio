@@ -423,10 +423,12 @@ async function openAddExercises(s) {
 
 function renderExercise(s, ex, exIdx, sctx) {
   const isLast = s.exercises[s.exercises.length - 1] === ex;
-  const card = el(`<div class="card${ex.supersetNext ? ' superset-linked' : ''}"></div>`);
+  // La superserie enlaza con el "siguiente": si este es el último, no hay enlace que mostrar.
+  const linked = ex.supersetNext && !isLast;
+  const card = el(`<div class="card${linked ? ' superset-linked' : ''}"></div>`);
   const badges = [];
-  if (ex.unilateral) badges.push('<span class="badge" style="white-space:nowrap">Unilateral ×2</span>');
-  if (ex.supersetNext) badges.push('<span class="badge" style="white-space:nowrap">⛓ Superserie</span>');
+  if (ex.unilateral) badges.push('<span class="badge" style="white-space:nowrap">Unilateral</span>');
+  if (linked) badges.push('<span class="badge" style="white-space:nowrap">⛓ Superserie</span>');
   const head = el(`
     <div class="row between" style="gap:8px;margin-bottom:4px;align-items:flex-start">
       <div class="grow" style="min-width:0">
@@ -434,7 +436,7 @@ function renderExercise(s, ex, exIdx, sctx) {
         ${badges.length ? `<div class="row wrap" style="gap:6px;margin-top:6px">${badges.join('')}</div>` : ''}
       </div>
       <div class="row" style="gap:2px;flex-shrink:0">
-        <button class="icon-btn" data-act="opts" aria-label="Opciones del ejercicio" title="Opciones: progresión, discos y notas" style="width:34px;height:34px">
+        <button class="icon-btn" data-act="opts" aria-label="Opciones del ejercicio" title="Opciones: esquema, progresión, discos y notas" style="width:34px;height:34px">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         ${isLast ? '' : `<button class="icon-btn" data-act="superset" aria-label="Superserie con el siguiente" title="Superserie con el siguiente" style="width:34px;height:34px;${ex.supersetNext ? 'color:var(--primary)' : ''}">
@@ -503,9 +505,8 @@ function renderExercise(s, ex, exIdx, sctx) {
   card.appendChild(table);
 
   const addRow = el(`
-    <div class="btn-row mt">
-      <button class="btn ghost" id="add-set" style="padding:10px">+ Añadir serie</button>
-      <button class="btn ghost" id="scheme" style="padding:10px">Esquema</button>
+    <div class="mt">
+      <button class="btn ghost block" id="add-set" style="padding:10px">+ Añadir serie</button>
     </div>`);
   addRow.querySelector('#add-set').onclick = () => {
     const last = ex.sets[ex.sets.length - 1];
@@ -513,7 +514,6 @@ function renderExercise(s, ex, exIdx, sctx) {
     renderRows();
     autosave(s);
   };
-  addRow.querySelector('#scheme').onclick = () => openSchemeModal(s, ex, renderRows);
   card.appendChild(addRow);
   return card;
 }
@@ -629,6 +629,10 @@ async function openExerciseOptions(s, ex, renderRows) {
         <button class="btn ghost block" id="o-progress">📈 Subir +${fmtNum(step)} ${esc(u)} sobre la última vez</button>
       </div>` : ''}
       <div class="field">
+        <label>Esquema de series</label>
+        <button class="btn ghost block" id="o-scheme">📋 Rellenar series de un toque</button>
+      </div>
+      <div class="field">
         <label>Calculadora de discos</label>
         <div class="row" style="gap:10px">
           <div class="field grow" style="margin:0"><label>Objetivo (${esc(u)})</label>
@@ -647,6 +651,9 @@ async function openExerciseOptions(s, ex, renderRows) {
     </div>`);
 
   const { close } = showModal(ex.name, content);
+
+  // Esquema de series (abre el modal de esquemas; showModal es singleton, cierra este)
+  content.querySelector('#o-scheme').onclick = () => { close(); openSchemeModal(s, ex, renderRows); };
 
   // Progresión
   const progBtn = content.querySelector('#o-progress');
@@ -815,7 +822,7 @@ export async function sessionSummary(ctx) {
     list.appendChild(el(`
       <div class="item">
         <div class="grow">
-          <div class="title">${esc(pe.name)}${pe.unilateral ? ' · Unilateral ×2' : ''}</div>
+          <div class="title">${esc(pe.name)}${pe.unilateral ? ' · Unilateral' : ''}</div>
           <div class="sub">${pe.sets} series · ${pe.reps} reps · máx ${fmtNum(pe.topWeight)} ${esc(unitLabel())}</div>
         </div>
         <div class="badge">${fmtNum(pe.volume)} ${esc(unitLabel())}</div>

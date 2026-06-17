@@ -50,7 +50,7 @@ export async function exerciseHistory(ctx) {
     const card = el('<div class="card clickable" style="margin-bottom:10px"></div>');
     card.appendChild(el(`
       <div class="row between" style="margin-bottom:8px">
-        <div style="font-weight:700">${fmtDate(e.date)}${e.unilateral ? ' · Unilateral ×2' : ''}</div>
+        <div style="font-weight:700">${fmtDate(e.date)}${e.unilateral ? ' · Unilateral' : ''}</div>
         <span class="badge">${fmtNum(e.volume)} ${esc(u)}</span>
       </div>`));
     const rows = e.sets.map((st, i) => {

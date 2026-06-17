@@ -5,6 +5,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
 ## [Sin publicar]
 
+### Cambiado
+- **Etiqueta de ejercicios unilaterales:** se quita el sufijo "×2" de la etiqueta (queda solo
+  "Unilateral") en la sesión, el resumen, el historial y el listado de ejercicios. El volumen
+  **sigue contando el doble** en los cálculos. (`js/views/session.js`,
+  `js/views/exercise-history.js`, `js/views/exercises.js`)
+- **Sesión en curso:** el botón **"+ Añadir serie"** ocupa toda la fila y el acceso a **"Esquema"**
+  se mueve al menú del engranaje (Opciones del ejercicio). (`js/views/session.js`)
+
 ## [1.2.0] - 2026-06-09
 
 ### Añadido
