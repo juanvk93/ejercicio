@@ -565,6 +565,67 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary)
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------- Fotos de ejercicio ---------- */
+/* Tira de miniaturas en la sesión activa (scroll horizontal). */
+.photo-strip {
+  display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch; padding: 2px 0; margin: 2px 0 12px;
+}
+.photo-strip::-webkit-scrollbar { display: none; }
+.photo-thumb {
+  flex: 0 0 auto; width: 64px; height: 64px; padding: 0; border: none;
+  border-radius: var(--radius-sm); overflow: hidden; cursor: pointer;
+  background: var(--bg-elev-2); box-shadow: inset 0 0 0 1px var(--border);
+  transition: transform var(--transition);
+}
+.photo-thumb:active { transform: scale(0.95); }
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Rejilla del editor de ejercicios (miniaturas + botón de añadir). */
+.photo-grid { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+.photo-tile {
+  position: relative; width: 84px; height: 84px; border-radius: var(--radius-sm);
+  overflow: hidden; background: var(--bg-elev-2); box-shadow: inset 0 0 0 1px var(--border);
+}
+.photo-tile img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: pointer; }
+.photo-del {
+  position: absolute; top: 4px; right: 4px; width: 24px; height: 24px;
+  border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 13px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.photo-add {
+  width: 84px; height: 84px; border-radius: var(--radius-sm);
+  border: 1.5px dashed var(--border); background: transparent; color: var(--text-dim);
+  cursor: pointer; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 3px; font-size: 12px; font-weight: 600;
+  transition: border-color var(--transition), color var(--transition);
+}
+.photo-add:active { border-color: var(--primary); color: var(--primary); }
+
+/* ---------- Visor de fotos a pantalla completa (lightbox) ---------- */
+.lightbox {
+  position: fixed; inset: 0; z-index: 1100;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex; align-items: center; justify-content: center;
+  animation: fade 160ms ease; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+}
+.lb-img-wrap { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.lb-img { max-width: 94vw; max-height: 88vh; object-fit: contain; border-radius: 6px; }
+.lb-btn {
+  position: absolute; border: none; cursor: pointer; color: #fff;
+  background: rgba(255, 255, 255, 0.14); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.lb-close { top: calc(env(safe-area-inset-top) + 14px); right: 16px; width: 40px; height: 40px; font-size: 18px; }
+.lb-prev, .lb-next { top: 50%; transform: translateY(-50%); width: 44px; height: 44px; font-size: 28px; line-height: 1; }
+.lb-prev { left: 12px; } .lb-next { right: 12px; }
+.lb-counter {
+  position: absolute; bottom: calc(env(safe-area-inset-bottom) + 18px); left: 50%;
+  transform: translateX(-50%); color: #fff; font-size: 14px; font-weight: 600;
+  background: rgba(0, 0, 0, 0.5); padding: 5px 14px; border-radius: 999px;
+}
+
 /* ---------- Responsive: tablet / desktop ---------- */
 @media (min-width: 600px) {
   .stat-grid { grid-template-columns: repeat(4, 1fr); }

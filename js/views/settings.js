@@ -193,12 +193,12 @@ export async function settings() {
   };
 
   dataCard.querySelector('#reset').onclick = async () => {
-    if (!await confirmDialog('Esto borrará ejercicios, grupos, sesiones, pesos, medidas y objetivos. ¿Seguro?', { okText: 'Borrar todo' })) return;
+    if (!await confirmDialog('Esto borrará ejercicios, grupos, sesiones, pesos, medidas, objetivos y fotos. ¿Seguro?', { okText: 'Borrar todo' })) return;
     await Promise.all([
       db.clear(db.STORES.EXERCISES), db.clear(db.STORES.GROUPS),
       db.clear(db.STORES.SESSIONS), db.clear(db.STORES.BODYWEIGHT),
       db.clear(db.STORES.MEASUREMENTS), db.clear(db.STORES.GOALS),
-      db.clear(db.STORES.PLANNER),
+      db.clear(db.STORES.PLANNER), db.clear(db.STORES.EXERCISE_PHOTOS),
     ]);
     await store.resetAchievementBaseline();
     toast('Datos borrados', 'success');

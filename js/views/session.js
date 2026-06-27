@@ -5,7 +5,7 @@
    ============================================================ */
 
 import { el, esc, num, round, fmtDate, fmtTime, fmtDuration, fmtClock, fmtNum, toast, confirmDialog, showModal,
-  tsFromDateTime, dateInputValue, timeInputValue, PLATES, DEFAULT_BAR, platesPerSide } from '../utils.js';
+  tsFromDateTime, dateInputValue, timeInputValue, PLATES, DEFAULT_BAR, platesPerSide, openLightbox } from '../utils.js';
 import { navigate } from '../router.js';
 import { unitLabel, getUnit } from '../prefs.js';
 import * as store from '../store.js';
@@ -421,6 +421,32 @@ async function openAddExercises(s) {
   };
 }
 
+/**
+ * Carga (diferida) las fotos del ejercicio y pinta una tira horizontal de miniaturas
+ * dentro de `host`. Si el ejercicio no tiene fotos, no añade nada (tarjeta sin cambios).
+ * Tocar una miniatura abre el visor a pantalla completa.
+ */
+async function loadExercisePhotos(exerciseId, host) {
+  let photos;
+  try { photos = await store.listExercisePhotos(exerciseId); }
+  catch (e) { return; }
+  if (!photos || !photos.length) return;
+  if (!document.body.contains(host)) return; // se cambió de vista mientras cargaba
+  const strip = el('<div class="photo-strip"></div>');
+  photos.forEach((p, i) => {
+    const thumb = document.createElement('button');
+    thumb.type = 'button';
+    thumb.className = 'photo-thumb';
+    thumb.setAttribute('aria-label', `Ver foto ${i + 1} de ${photos.length}`);
+    const im = document.createElement('img');
+    im.src = p.dataUrl; im.alt = ''; im.loading = 'lazy';
+    thumb.appendChild(im);
+    thumb.onclick = () => openLightbox(photos, i);
+    strip.appendChild(thumb);
+  });
+  host.appendChild(strip);
+}
+
 function renderExercise(s, ex, exIdx, sctx) {
   const isLast = s.exercises[s.exercises.length - 1] === ex;
   // La superserie enlaza con el "siguiente": si este es el último, no hay enlace que mostrar.
@@ -467,6 +493,11 @@ function renderExercise(s, ex, exIdx, sctx) {
     }
   };
   card.appendChild(head);
+
+  // Tira de fotos del ejercicio (carga diferida). Si no tiene, la tarjeta queda igual.
+  const photoSlot = el('<div></div>');
+  card.appendChild(photoSlot);
+  loadExercisePhotos(ex.exerciseId, photoSlot);
 
   function renderRows() {
     tbody.innerHTML = '';

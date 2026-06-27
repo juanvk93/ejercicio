@@ -313,3 +313,95 @@ export function barChart(points, { height = 160 } = {}) {
       </svg>
     </div>`;
 }
+
+/* ---------- Imágenes ---------- */
+/**
+ * Comprime una imagen (File/Blob) reescalándola con un canvas y reencodándola a JPEG.
+ * Limita el lado largo a `maxEdge` (sin ampliar) y devuelve `{ dataUrl, w, h }`.
+ * Reencodear vía canvas también normaliza la orientación EXIF y convierte HEIC (iOS)
+ * a JPEG. Procesa de una en una para no disparar la memoria en móvil.
+ */
+export function compressImage(file, { maxEdge = 1280, quality = 0.82 } = {}) {
+  return new Promise((resolve, reject) => {
+    if (!file || !/^image\//.test(file.type || '')) { reject(new Error('No es una imagen')); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) throw new Error('Imagen vacía');
+        const scale = Math.min(1, maxEdge / Math.max(w, h));
+        const cw = Math.max(1, Math.round(w * scale));
+        const ch = Math.max(1, Math.round(h * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = cw; canvas.height = ch;
+        canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+        resolve({ dataUrl: canvas.toDataURL('image/jpeg', quality), w: cw, h: ch });
+      } catch (e) { reject(e); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo cargar la imagen')); };
+    img.src = url;
+  });
+}
+
+/* ---------- Visor de fotos a pantalla completa (lightbox) ---------- */
+/**
+ * Abre un visor a pantalla completa para una lista de fotos `[{ dataUrl }]`.
+ * Permite navegar entre ellas (flechas, teclado y deslizar) y cerrar (✕, fondo, Esc).
+ */
+export function openLightbox(photos, startIndex = 0) {
+  if (!Array.isArray(photos) || !photos.length) return;
+  let idx = Math.max(0, Math.min(startIndex, photos.length - 1));
+  const single = photos.length <= 1;
+
+  const overlay = el('<div class="lightbox" role="dialog" aria-modal="true" aria-label="Visor de fotos"></div>');
+  const imgWrap = el('<div class="lb-img-wrap"></div>');
+  const img = document.createElement('img');
+  img.className = 'lb-img';
+  img.alt = 'Foto del ejercicio';
+  imgWrap.appendChild(img);
+
+  const closeBtn = el('<button class="lb-btn lb-close" type="button" aria-label="Cerrar">✕</button>');
+  closeBtn.onclick = close;
+
+  function paint() { img.src = photos[idx].dataUrl; if (counter) counter.textContent = `${idx + 1} / ${photos.length}`; }
+  function go(d) { idx = (idx + d + photos.length) % photos.length; paint(); }
+  function close() { overlay.remove(); document.removeEventListener('keydown', onKey, true); }
+  // Captura el evento y detiene su propagación para que, si el visor se abrió sobre un modal
+  // (p. ej. el editor de ejercicios), Esc/flechas no lleguen también al modal de debajo.
+  function onKey(e) {
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    else if (!single && e.key === 'ArrowLeft') { e.stopPropagation(); go(-1); }
+    else if (!single && e.key === 'ArrowRight') { e.stopPropagation(); go(1); }
+  }
+
+  let counter = null;
+  overlay.appendChild(closeBtn);
+  overlay.appendChild(imgWrap);
+  if (!single) {
+    const prevBtn = el('<button class="lb-btn lb-prev" type="button" aria-label="Anterior">‹</button>');
+    const nextBtn = el('<button class="lb-btn lb-next" type="button" aria-label="Siguiente">›</button>');
+    counter = el('<div class="lb-counter"></div>');
+    prevBtn.onclick = () => go(-1);
+    nextBtn.onclick = () => go(1);
+    overlay.appendChild(prevBtn);
+    overlay.appendChild(nextBtn);
+    overlay.appendChild(counter);
+  }
+
+  // Cerrar al tocar el fondo (no la imagen). Deslizar para cambiar de foto.
+  overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target === imgWrap) close(); });
+  let sx = null;
+  overlay.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; }, { passive: true });
+  overlay.addEventListener('touchend', (e) => {
+    if (sx == null) return;
+    const dx = e.changedTouches[0].clientX - sx;
+    sx = null;
+    if (!single && Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
+  });
+
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(overlay);
+  paint();
+}

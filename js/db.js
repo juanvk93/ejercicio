@@ -4,7 +4,7 @@
    ============================================================ */
 
 const DB_NAME = 'gym-tracker';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export const STORES = {
   EXERCISES: 'exercises',       // ejercicios genéricos
@@ -14,6 +14,7 @@ export const STORES = {
   MEASUREMENTS: 'measurements', // medidas corporales (cintura, brazo…)
   GOALS: 'goals',               // objetivos por ejercicio
   PLANNER: 'planner',           // planificación semanal (grupos por día)
+  EXERCISE_PHOTOS: 'exercisePhotos', // fotos por ejercicio (JPEG comprimido en dataURL)
 };
 
 let _dbPromise = null;
@@ -53,6 +54,10 @@ export function openDB() {
       }
       if (!db.objectStoreNames.contains(STORES.PLANNER)) {
         db.createObjectStore(STORES.PLANNER, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORES.EXERCISE_PHOTOS)) {
+        const s = db.createObjectStore(STORES.EXERCISE_PHOTOS, { keyPath: 'id' });
+        s.createIndex('exerciseId', 'exerciseId', { unique: false });
       }
     };
 
@@ -106,9 +111,35 @@ export function getSessionsByStatus(status) {
   return tx(STORES.SESSIONS, 'readonly', (s) => s.index('status').getAll(status));
 }
 
+/** Devuelve todas las fotos de un ejercicio, usando el índice. */
+export function getPhotosByExercise(exerciseId) {
+  return tx(STORES.EXERCISE_PHOTOS, 'readonly', (s) => s.index('exerciseId').getAll(exerciseId));
+}
+
+/**
+ * Cuenta fotos por ejercicio SIN cargar los dataURL: recorre solo las claves del índice
+ * (`openKeyCursor` no lee el valor del registro). Devuelve un Map exerciseId → nº.
+ */
+export async function countPhotosByExercise() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const counts = new Map();
+    const t = db.transaction(STORES.EXERCISE_PHOTOS, 'readonly');
+    const req = t.objectStore(STORES.EXERCISE_PHOTOS).index('exerciseId').openKeyCursor();
+    req.onsuccess = () => {
+      const cur = req.result;
+      if (!cur) { resolve(counts); return; }
+      counts.set(cur.key, (counts.get(cur.key) || 0) + 1);
+      cur.continue();
+    };
+    req.onerror = () => reject(req.error);
+    t.onerror = () => reject(t.error);
+  });
+}
+
 /** Exporta toda la base de datos como objeto plano (para backup). */
 export async function exportAll() {
-  const [exercises, groups, sessions, bodyweight, measurements, goals, planner] = await Promise.all([
+  const [exercises, groups, sessions, bodyweight, measurements, goals, planner, exercisePhotos] = await Promise.all([
     getAll(STORES.EXERCISES),
     getAll(STORES.GROUPS),
     getAll(STORES.SESSIONS),
@@ -116,14 +147,15 @@ export async function exportAll() {
     getAll(STORES.MEASUREMENTS),
     getAll(STORES.GOALS),
     getAll(STORES.PLANNER),
+    getAll(STORES.EXERCISE_PHOTOS),
   ]);
-  return { version: DB_VERSION, exportedAt: new Date().toISOString(), exercises, groups, sessions, bodyweight, measurements, goals, planner };
+  return { version: DB_VERSION, exportedAt: new Date().toISOString(), exercises, groups, sessions, bodyweight, measurements, goals, planner, exercisePhotos };
 }
 
 /** Importa un backup (reemplaza el contenido actual). */
 export async function importAll(data) {
   const db = await openDB();
-  const names = [STORES.EXERCISES, STORES.GROUPS, STORES.SESSIONS, STORES.BODYWEIGHT, STORES.MEASUREMENTS, STORES.GOALS, STORES.PLANNER];
+  const names = [STORES.EXERCISES, STORES.GROUPS, STORES.SESSIONS, STORES.BODYWEIGHT, STORES.MEASUREMENTS, STORES.GOALS, STORES.PLANNER, STORES.EXERCISE_PHOTOS];
   return new Promise((resolve, reject) => {
     const t = db.transaction(names, 'readwrite');
     t.oncomplete = () => resolve(true);
@@ -140,6 +172,7 @@ export async function importAll(data) {
       [STORES.MEASUREMENTS]: arr(data.measurements),
       [STORES.GOALS]: arr(data.goals),
       [STORES.PLANNER]: arr(data.planner),
+      [STORES.EXERCISE_PHOTOS]: arr(data.exercisePhotos),
     };
     names.forEach((name) => {
       const store = t.objectStore(name);

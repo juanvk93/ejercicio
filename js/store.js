@@ -77,7 +77,50 @@ export async function deleteExercise(id) {
       .filter((g) => g.exerciseIds.includes(id))
       .map((g) => db.put(STORES.GROUPS, { ...g, exerciseIds: g.exerciseIds.filter((x) => x !== id) }))
   );
+  await deleteExercisePhotosForExercise(id); // borrado en cascada de sus fotos
   return db.remove(STORES.EXERCISES, id);
+}
+
+/* ---------------- Fotos por ejercicio ----------------
+   Se guardan en su propio store (no dentro del ejercicio) porque `exercises` se lee
+   en casi todos los cálculos: cargar los dataURL en cada operación sería un derroche.
+   Cada foto: `{ id, exerciseId, dataUrl, w, h, createdAt }`. El dataURL es un JPEG ya
+   comprimido (ver `utils.compressImage`), por lo que el backup JSON lo incluye tal cual. */
+export const MAX_EXERCISE_PHOTOS = 4;
+
+/** Fotos de un ejercicio, en orden de subida (la primera es la portada). */
+export async function listExercisePhotos(exerciseId) {
+  if (!exerciseId) return [];
+  const all = await db.getPhotosByExercise(exerciseId);
+  return all.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+
+/** Añade una foto (dataURL ya comprimido) a un ejercicio. Devuelve el registro. */
+export async function addExercisePhoto(exerciseId, dataUrl, meta = {}) {
+  const rec = {
+    id: uid(),
+    exerciseId,
+    dataUrl,
+    w: Math.round(num(meta.w)) || 0,
+    h: Math.round(num(meta.h)) || 0,
+    createdAt: Date.now(),
+  };
+  await db.put(STORES.EXERCISE_PHOTOS, rec);
+  return rec;
+}
+
+export function deleteExercisePhoto(id) { return db.remove(STORES.EXERCISE_PHOTOS, id); }
+
+/** Borra todas las fotos de un ejercicio (usado al eliminar el ejercicio). */
+export async function deleteExercisePhotosForExercise(exerciseId) {
+  const all = await db.getPhotosByExercise(exerciseId);
+  await Promise.all(all.map((p) => db.remove(STORES.EXERCISE_PHOTOS, p.id)));
+}
+
+/** Mapa exerciseId → nº de fotos (para señalizar en el listado de ejercicios).
+ *  Usa un cursor de claves: no carga los dataURL en memoria. */
+export function exercisePhotoCounts() {
+  return db.countPhotosByExercise();
 }
 
 /* ---------------- Grupos de ejercicios ---------------- */

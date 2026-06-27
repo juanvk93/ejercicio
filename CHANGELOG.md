@@ -5,6 +5,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
 ## [Sin publicar]
 
+### Añadido
+- **Fotos por ejercicio:** cada ejercicio puede tener hasta **4 fotos** (técnica, máquina, agarre…),
+  que se añaden desde su editor (cámara o galería). Se guardan **comprimidas** (JPEG, lado largo máx.
+  1280 px) en IndexedDB, en su propio store. Al entrenar, la tarjeta del ejercicio muestra una **tira
+  de miniaturas**; al tocar una se abre un **visor a pantalla completa** (deslizar para pasar). Si el
+  ejercicio no tiene fotos, la tarjeta se ve como siempre. El listado de ejercicios señala con un
+  icono los que tienen fotos, y el backup las incluye. (`js/db.js` → `DB_VERSION = 4`, store
+  `exercisePhotos`; `js/store.js`; `js/utils.js` → `compressImage`/`openLightbox`;
+  `js/views/exercises.js`, `js/views/session.js`, `css/styles.css`)
+
 ### Cambiado
 - **Etiqueta de ejercicios unilaterales:** se quita el sufijo "×2" de la etiqueta (queda solo
   "Unilateral") en la sesión, el resumen, el historial y el listado de ejercicios. El volumen

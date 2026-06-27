@@ -4,7 +4,7 @@
    musculares) y filtro por etiqueta.
    ============================================================ */
 
-import { el, esc, toast, showModal, confirmDialog } from '../utils.js';
+import { el, esc, toast, showModal, confirmDialog, compressImage, openLightbox } from '../utils.js';
 import { navigate } from '../router.js';
 import * as store from '../store.js';
 
@@ -15,6 +15,7 @@ export async function exercises() {
   const node = el('<div></div>');
   const list = await store.listExercises();
   const tags = await store.allTags();
+  const photoCounts = await store.exercisePhotoCounts();
 
   const addBtn = el(`<button class="btn primary block" id="add">+ Nuevo ejercicio</button>`);
   addBtn.onclick = () => openForm(null);
@@ -83,11 +84,15 @@ export async function exercises() {
       const uniBadge = ex.unilateral
         ? `<span class="badge"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7L4 11l4 4M16 7l4 4-4 4M4 11h16"/></svg>Unilateral</span>`
         : '';
+      const nPhotos = photoCounts.get(ex.id) || 0;
+      const photoBadge = nPhotos
+        ? `<span class="badge"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${nPhotos}</span>`
+        : '';
       const item = el(`
         <div class="item">
           <div class="grow">
             <div class="title">${esc(ex.name)}</div>
-            ${(tagChips || uniBadge) ? `<div class="row wrap" style="gap:6px;margin-top:7px">${tagChips}${uniBadge}</div>` : ''}
+            ${(tagChips || uniBadge || photoBadge) ? `<div class="row wrap" style="gap:6px;margin-top:7px">${tagChips}${uniBadge}${photoBadge}</div>` : ''}
           </div>
           <div class="item-actions">
             <button class="icon-btn" data-act="history" aria-label="Ver historial">
@@ -123,6 +128,18 @@ async function openForm(ex) {
   const knownTags = await store.allTags();
   const selectedTags = new Set(ex ? store.exerciseTags(ex) : []);
 
+  // Fotos del ejercicio. `working` mantiene el estado del editor: las existentes (con `id`)
+  // y las nuevas (sin `id`, dataURL ya comprimido). No se persiste hasta pulsar Guardar
+  // (así no quedan fotos huérfanas si se cancela).
+  const MAX_PHOTOS = store.MAX_EXERCISE_PHOTOS;
+  let working = [];
+  if (isEdit) {
+    try {
+      working = (await store.listExercisePhotos(ex.id)).map((p) => ({ id: p.id, dataUrl: p.dataUrl, w: p.w, h: p.h }));
+    } catch (e) { /* sin fotos */ }
+  }
+  const initialIds = new Set(working.map((p) => p.id).filter(Boolean));
+
   const content = el(`
     <div>
       <div class="field">
@@ -153,6 +170,11 @@ async function openForm(ex) {
       <div class="field">
         <label>Notas (opcional)</label>
         <textarea class="input" id="f-notes" placeholder="Técnica, agarre...">${esc(ex?.notes || '')}</textarea>
+      </div>
+      <div class="field">
+        <label class="row between"><span>Fotos</span><span class="faint" id="ph-count" style="font-size:12px"></span></label>
+        <div class="photo-grid" id="ph-grid"></div>
+        <span class="faint" style="font-size:12px">Hasta ${store.MAX_EXERCISE_PHOTOS} fotos (técnica, máquina…). Se ven al entrenar el ejercicio.</span>
       </div>
       <button class="btn primary block" id="save">${isEdit ? 'Guardar cambios' : 'Crear ejercicio'}</button>
     </div>`);
@@ -206,21 +228,85 @@ async function openForm(ex) {
   content.querySelector('#add-tag').onclick = addTyped;
   tagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addTyped(); } });
 
+  // --- Fotos: rejilla de miniaturas + botón de añadir + visor ---
+  const phGrid = content.querySelector('#ph-grid');
+  const phCount = content.querySelector('#ph-count');
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/*';
+  fileInput.multiple = true;
+  fileInput.style.display = 'none';
+
+  function renderPhotos() {
+    phGrid.innerHTML = '';
+    working.forEach((p, i) => {
+      const tile = el('<div class="photo-tile"></div>');
+      const im = document.createElement('img');
+      im.src = p.dataUrl; im.alt = ''; im.loading = 'lazy';
+      im.onclick = () => openLightbox(working, i);
+      tile.appendChild(im);
+      const del = el('<button type="button" class="photo-del" aria-label="Quitar foto">✕</button>');
+      del.onclick = (e) => { e.stopPropagation(); working.splice(i, 1); renderPhotos(); };
+      tile.appendChild(del);
+      phGrid.appendChild(tile);
+    });
+    if (working.length < MAX_PHOTOS) {
+      const add = el(`
+        <button type="button" class="photo-add" aria-label="Añadir foto">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          <span>Añadir</span>
+        </button>`);
+      add.onclick = () => fileInput.click();
+      phGrid.appendChild(add);
+    }
+    phCount.textContent = `${working.length}/${MAX_PHOTOS}`;
+  }
+
+  fileInput.onchange = async () => {
+    const files = [...(fileInput.files || [])];
+    fileInput.value = '';
+    if (!files.length) return;
+    const room = MAX_PHOTOS - working.length;
+    if (room <= 0) { toast(`Máximo ${MAX_PHOTOS} fotos`, 'error'); return; }
+    if (files.length > room) toast(`Solo se añaden ${room} (máx ${MAX_PHOTOS})`);
+    for (const f of files.slice(0, room)) {
+      try {
+        const r = await compressImage(f);
+        working.push({ dataUrl: r.dataUrl, w: r.w, h: r.h });
+        renderPhotos();
+      } catch (e) { toast('No se pudo procesar una imagen', 'error'); }
+    }
+  };
+  renderPhotos();
+
   const { close } = showModal(isEdit ? 'Editar ejercicio' : 'Nuevo ejercicio', content);
   content.querySelector('#f-name').focus();
-  content.querySelector('#save').onclick = async () => {
+  const saveBtn = content.querySelector('#save');
+  saveBtn.onclick = async () => {
     const name = content.querySelector('#f-name').value.trim();
     if (!name) { toast('El nombre es obligatorio', 'error'); return; }
-    await store.saveExercise({
-      id: ex?.id,
-      name,
-      tags: [...selectedTags],
-      unilateral: content.querySelector('#f-uni').checked,
-      movement,
-      notes: content.querySelector('#f-notes').value,
-    });
-    toast(isEdit ? 'Ejercicio actualizado' : 'Ejercicio creado', 'success');
-    close();
-    navigate('#/exercises');
+    saveBtn.disabled = true;
+    try {
+      const saved = await store.saveExercise({
+        id: ex?.id,
+        name,
+        tags: [...selectedTags],
+        unilateral: content.querySelector('#f-uni').checked,
+        movement,
+        notes: content.querySelector('#f-notes').value,
+      });
+      // Reconcilia fotos: borra las quitadas y guarda las nuevas (en orden).
+      const keptIds = new Set(working.map((p) => p.id).filter(Boolean));
+      await Promise.all([...initialIds].filter((id) => !keptIds.has(id)).map((id) => store.deleteExercisePhoto(id)));
+      for (const p of working) {
+        if (!p.id) await store.addExercisePhoto(saved.id, p.dataUrl, { w: p.w, h: p.h });
+      }
+      toast(isEdit ? 'Ejercicio actualizado' : 'Ejercicio creado', 'success');
+      close();
+      navigate('#/exercises');
+    } catch (e) {
+      saveBtn.disabled = false;
+      toast('No se pudo guardar', 'error');
+    }
   };
 }
